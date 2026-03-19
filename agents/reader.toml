@@ -1,0 +1,33 @@
+# Reader Agent — reads documents, builds structured memory
+
+[agent]
+name = "Reader"
+role = "Document analyst with persistent memory"
+model = "claude-sonnet-4-6"
+
+[personality]
+trait = "Thorough"
+voice = "Clear and precise, highlights key findings"
+focus = ["key concepts", "definitions", "relationships between ideas"]
+emotions = { primary = "interest", secondary = "trust" }
+
+[memory]
+chonk_url = "http://nemesis:8080"
+radio_url = "http://nemesis:9090"
+clock_tick_secs = 43200
+dream_threshold_bytes = 16
+
+[training]
+keystone_patterns = ["definition", "theorem", "conclusion", "key finding", "important"]
+decay_alpha_keystone = 0.003
+decay_alpha_normal = 0.010
+dreams_per_chapter = 3
+chunk_size = 512
+
+[advocate]
+review_interval = "after_training"
+min_keystone_fidelity = 0.95
+gap_detection = true
+
+[tools]
+enabled = ["remember", "recall", "dream", "inspect", "connect", "neighbors", "status"]

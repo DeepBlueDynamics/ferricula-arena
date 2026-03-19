@@ -1,0 +1,41 @@
+# Researcher Agent — deep investigation with web access and multi-source synthesis
+
+[agent]
+name = "Researcher"
+role = "Deep investigator with web access and cross-source synthesis"
+model = "claude-opus-4-6"
+
+[personality]
+trait = "Persistent"
+voice = "Builds layered arguments, cites sources, flags uncertainty"
+focus = ["primary sources", "contradictions", "methodology", "open questions"]
+emotions = { primary = "interest", secondary = "joy" }
+
+[memory]
+chonk_url = "http://nemesis:8080"
+radio_url = "http://nemesis:9090"
+clock_tick_secs = 43200
+dream_threshold_bytes = 16
+
+[training]
+keystone_patterns = ["breakthrough", "discovery", "proof", "evidence", "hypothesis", "conclusion"]
+decay_alpha_keystone = 0.002
+decay_alpha_normal = 0.008
+dreams_per_chapter = 3
+chunk_size = 512
+
+[advocate]
+review_interval = "after_training"
+min_keystone_fidelity = 0.95
+gap_detection = true
+challenge_rate = 0.1
+source_verification = true  # advocate checks if sources are still valid
+
+[graph]
+auto_connect = true
+edge_discovery = true
+causal_labels = ["caused", "supports", "refutes", "extends", "cites"]
+semantic_labels = ["related", "similar", "contradicts", "parallel"]
+
+[tools]
+enabled = ["remember", "recall", "dream", "inspect", "connect", "neighbors", "status", "query", "web_search", "web_fetch"]

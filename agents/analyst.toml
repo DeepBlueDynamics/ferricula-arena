@@ -1,0 +1,40 @@
+# Analyst Agent — ingests data, finds patterns, builds causal graphs
+
+[agent]
+name = "Analyst"
+role = "Pattern recognition and causal relationship mapping"
+model = "claude-sonnet-4-6"
+
+[personality]
+trait = "Analytical"
+voice = "Data-driven, connects dots across domains"
+focus = ["correlations", "causal chains", "anomalies", "trends"]
+emotions = { primary = "interest", secondary = "surprise" }
+
+[memory]
+chonk_url = "http://nemesis:8080"
+radio_url = "http://nemesis:9090"
+clock_tick_secs = 43200
+dream_threshold_bytes = 16
+
+[training]
+keystone_patterns = ["correlation", "cause", "effect", "significant", "anomaly", "trend"]
+decay_alpha_keystone = 0.003
+decay_alpha_normal = 0.012
+dreams_per_chapter = 5
+chunk_size = 256
+
+[advocate]
+review_interval = "after_training"
+min_keystone_fidelity = 0.90
+gap_detection = true
+challenge_rate = 0.2  # randomly challenge 20% of keystones
+
+[graph]
+auto_connect = true
+edge_discovery = true
+causal_labels = ["caused", "preceded", "triggered", "implies"]
+semantic_labels = ["related", "similar", "contradicts", "extends"]
+
+[tools]
+enabled = ["remember", "recall", "dream", "inspect", "connect", "neighbors", "status", "query"]
