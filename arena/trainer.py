@@ -115,20 +115,24 @@ async def train(agent: Agent, dataset_dir: str | Path, *,
             print(f"[{i+1}/{len(files)}] {fpath.name}", end="")
             sys.stdout.flush()
 
-        # Read file — PDFs need special handling
+        # Read file — PDFs need PyMuPDF for text extraction
         if fpath.suffix.lower() == ".pdf":
             try:
-                import subprocess as _sp
-                result = _sp.run(
-                    ["python", "-c", f"import fitz; doc=fitz.open(r'{fpath}'); print('\\n'.join(p.get_text() for p in doc))"],
-                    capture_output=True, text=True, timeout=60,
-                )
-                text = result.stdout if result.returncode == 0 else ""
-                if not text.strip():
-                    # Fallback: read as binary, let shivvr handle it
-                    text = fpath.read_text(encoding="utf-8", errors="replace")
-            except Exception:
-                text = fpath.read_text(encoding="utf-8", errors="replace")
+                import fitz  # PyMuPDF
+                doc = fitz.open(str(fpath))
+                pages = [page.get_text() for page in doc]
+                text = "\n\n".join(p for p in pages if p.strip())
+                doc.close()
+                if progress and not text.strip():
+                    print(" (no extractable text)")
+            except ImportError:
+                if progress:
+                    print(" ERROR: pip install PyMuPDF needed for PDFs")
+                continue
+            except Exception as e:
+                if progress:
+                    print(f" ERROR reading PDF: {e}")
+                continue
         else:
             text = fpath.read_text(encoding="utf-8", errors="replace")
         if not text.strip():
