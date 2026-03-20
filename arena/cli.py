@@ -252,10 +252,19 @@ def main():
     p.add_argument("--cycles", "-c", type=int, default=3,
                    help="Number of dream cycles (default: 3)")
 
+    # monitor
+    sub.add_parser("monitor", help="Live TUI dashboard")
+
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
         sys.exit(1)
+
+    # Monitor runs its own event loop (Textual), not asyncio.run
+    if args.command == "monitor":
+        from .monitor import run_monitor
+        run_monitor()
+        return
 
     dispatch = {
         "create": cmd_create,
