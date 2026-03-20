@@ -474,11 +474,11 @@ class MonitorApp(App):
 
         # Recall memories for context
         client = FerriculaClient(f"http://localhost:{port}", name)
-        chonk_url = "http://nemesis:8080"  # default
+        chonk_url = "http://nemesis:8080"  # default shivvr endpoint
 
-        # Look up chonk URL from supervisor registry
+        # Look up shivvr URL from supervisor registry
         reg = self.supervisor._registry.get(name, {})
-        # For now use default chonk
+        # For now use default shivvr
 
         chonk = ChonkClient(chonk_url)
         try:

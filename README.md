@@ -104,7 +104,7 @@ Causal edges prevent recursive feedback loops that would trap an agent in its ow
 ### Built on
 
 - [ferricula](https://ferricula.com) — thermodynamic memory engine (Rust)
-- [gnosis-chunk](https://github.com/DeepBlueDynamics/gnosis-chunk) — embedding + vec2text inversion (Rust, ONNX)
+- [shivvr](https://github.com/DeepBlueDynamics/shivvr) — embedding + vec2text inversion (Rust, ONNX)
 - [sdr-random](https://github.com/DeepBlueDynamics/sdr-random) — hardware entropy from RTL-SDR (Rust)
 - Claude API — LLM reasoning (Anthropic)
 

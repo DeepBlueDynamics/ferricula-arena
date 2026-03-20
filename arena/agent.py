@@ -171,7 +171,7 @@ class Agent:
     async def remember(self, text: str, *, channel: str = "hearing",
                        keystone: bool = False,
                        importance: float = 0.0) -> int:
-        """Embed text via chonk and store in ferricula."""
+        """Embed text via shivvr and store in ferricula."""
         self._require_running()
         vector = await self.chonk.embed(text)
         alpha = (self.config.training.decay_alpha_keystone if keystone

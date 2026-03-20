@@ -1,4 +1,4 @@
-"""HTTP clients for ferricula and chonk (gnosis-chunk).
+"""HTTP clients for ferricula and shivvr (embedding service).
 
 Async via httpx. Response parsing adapted from the original arena clients.
 """
@@ -162,7 +162,7 @@ def parse_remember_id(text: str) -> Optional[int]:
 # ── ChonkClient ─────────────────────────────────────────────────────────
 
 class ChonkClient:
-    """Async HTTP client for gnosis-chunk embedding service."""
+    """Async HTTP client for shivvr embedding service."""
 
     def __init__(self, base_url: str = "http://localhost:8080"):
         self.base_url = base_url.rstrip("/")
@@ -285,7 +285,7 @@ class FerriculaClient:
 
     async def recall_text(self, text: str, chonk: ChonkClient,
                           k: int = 5) -> list[RecallHit]:
-        """Embed text via chonk, then recall by vector similarity."""
+        """Embed text via shivvr, then recall by vector similarity."""
         vector = await chonk.embed(text)
         return await self.recall_vector(vector, k)
 

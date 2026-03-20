@@ -12,7 +12,7 @@ ferricula-arena/
   agent.py              # Base agent class — wraps ferricula + LLM
   trainer.py            # Dataset trainer — feeds documents, fast-forwards dreams
   monitor.py            # Live monitoring — TUI dashboard for all agents
-  clients.py            # HTTP clients for ferricula + chonk (from arena)
+  clients.py            # HTTP clients for ferricula + shivvr (from arena)
   config.py             # TOML config loader
   cli.py                # CLI entry point
   agents/               # Agent templates (TOML + optional prompt packs)
@@ -56,7 +56,7 @@ The advocate:
 
 ```
 1. CREATE agent   → spin up ferricula container, cast identity
-2. LOAD dataset   → chunk documents via chonk, classify keystones
+2. LOAD dataset   → chunk documents via shivvr, classify keystones
 3. INGEST         → remember chunks with channel/emotion/importance
 4. SEED GRAPH     → connect related memories (co-occurrence, semantic)
 5. FAST-FORWARD   → run N dream cycles to consolidate and decay
@@ -135,7 +135,7 @@ arena resume --agent Trek
 
 - Python 3.10+
 - Docker (ferricula containers)
-- chonk/shivvr (embedding service)
+- shivvr (embedding service)
 - Anthropic API key (AGENT_KEY for LLM)
 - Optional: sdr-random (entropy source for dreams)
 - textual (TUI framework)

@@ -2,7 +2,7 @@
 
 Training flow:
   1. SCAN    — find .txt, .md, .pdf files in dataset directory
-  2. CHUNK   — send each file to chonk for chunking + embedding
+  2. CHUNK   — send each file to shivvr for chunking + embedding
   3. CLASSIFY — match chunks against keystone_patterns from agent template
   4. INGEST  — POST to ferricula /remember with channel/emotion/importance
   5. SEED    — connect related memories (co-occurrence, semantic)
@@ -122,7 +122,7 @@ async def train(agent: Agent, dataset_dir: str | Path, *,
                 print(" (empty, skipped)")
             continue
 
-        # Chunk via chonk
+        # Chunk via shivvr
         try:
             chunks = await agent.chonk.chunk_and_embed(text)
         except Exception as e:

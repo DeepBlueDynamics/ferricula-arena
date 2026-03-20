@@ -11,7 +11,7 @@ Technical setup guide. No fluff.
 | Python | 3.10+ | Arena orchestrator, CLI, TUI |
 | Docker | 29+ | ferricula containers |
 | ferricula image | `gcr.io/gnosis-459403/ferricula:latest` | Memory engine per agent |
-| gnosis-chunk (shivvr) | Running on network | Embedding (gtr-t5-base 768d) + vec2text inversion |
+| shivvr | Running on network | Embedding (gtr-t5-base 768d) + vec2text inversion |
 | Anthropic API key | `AGENT_KEY` env var | LLM for agent reasoning + query rewriting |
 | sdr-random (optional) | Running on host with RTL-SDR | Hardware entropy for dream cycles |
 
@@ -35,15 +35,15 @@ Technical setup guide. No fluff.
      └─────────────────────┼─────────────────────────┘
                            │
                     ┌──────┴──────┐
-                    │ gnosis-chunk│
-                    │ (shivvr)   │
+                    │   shivvr   │
+                    │            │
                     │ :8080      │
                     │ gtr-t5-base│
                     │ 768d ONNX  │
                     └─────────────┘
 ```
 
-All ferricula containers talk to the same chonk instance for embedding. Each container has its own data volume (WAL + snapshots). sdr-random runs bare-metal because it needs USB access to the RTL-SDR dongle.
+All ferricula containers talk to the same shivvr instance for embedding. Each container has its own data volume (WAL + snapshots). sdr-random runs bare-metal because it needs USB access to the RTL-SDR dongle.
 
 ## Install
 
@@ -66,14 +66,14 @@ docker pull gcr.io/gnosis-459403/ferricula:latest
 
 Image is public. No auth needed. ~30MB compressed (debian-slim + static Rust binary).
 
-## Verify chonk is reachable
+## Verify shivvr is reachable
 
 ```bash
-curl http://your-chonk-host:8080/health
+curl http://your-shivvr-host:8080/health
 # Should return: {"status":"ok","models":[{"name":"gtr-t5-base",...}]}
 
 # Test embedding:
-curl -s -X POST http://your-chonk-host:8080/memory/_mcp/ingest \
+curl -s -X POST http://your-shivvr-host:8080/memory/_mcp/ingest \
   -H 'Content-Type: application/json' \
   -d '{"text":"test"}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'dim={len(d[\"chunks\"][0][\"embedding\"])}')"
 # Should print: dim=768
@@ -117,7 +117,7 @@ curl http://localhost:8770/        # Dashboard (HTML)
 ## Network modes
 
 ### `--network host` (recommended on Linux)
-Container shares host network. `localhost:8080` reaches chonk, `localhost:9090` reaches sdr-random. No port mapping needed — set `PORT=8770` and it listens on host `8770` directly.
+Container shares host network. `localhost:8080` reaches shivvr, `localhost:9090` reaches sdr-random. No port mapping needed — set `PORT=8770` and it listens on host `8770` directly.
 
 ### Bridge networking (Docker Desktop on Mac/Windows)
 ```bash
@@ -143,7 +143,7 @@ arena train --agent Scholar --dataset ./papers/ --dreams 5
 ### What happens:
 
 1. **Scan** — finds all `.txt`, `.md`, `.pdf` files in the dataset directory
-2. **Chunk** — sends each file to chonk `/memory/_mcp/ingest` for chunking + embedding
+2. **Chunk** — sends each file to shivvr `/memory/_mcp/ingest` for chunking + embedding
 3. **Classify** — matches chunks against `keystone_patterns` from the agent template
 4. **Ingest** — POSTs to ferricula `/remember` with:
    - `channel`: "hearing" (primary content) or "seeing" (supplementary)
@@ -330,14 +330,14 @@ packs/
 ### `radio=disconnected` in clock output
 The clock resolved `localhost` via `SocketAddr::parse` which fails on hostnames. Fixed in v0.5.0 — uses `ToSocketAddrs` now. Pull latest image.
 
-### `chonk not reachable`
-The MCP tool (Python side) calls chonk for embedding, not the container. Check `CHONK_URL` in your `.mcp.json`, not the container env. The container's `CHONK_URL` is only used by the inversion pipeline during dreams.
+### `shivvr not reachable`
+The MCP tool (Python side) calls shivvr for embedding, not the container. Check `CHONK_URL` in your `.mcp.json`, not the container env. The container's `CHONK_URL` is only used by the inversion pipeline during dreams.
 
 ### Recall returns SQL parser errors
 Freeform queries with "and"/"or" were being parsed as SQL boolean expressions. Fixed in v0.5.0 — the planner now only treats these as SQL if the text also contains `=`. Pull latest image or set `AGENT_KEY` for LLM query rewriting.
 
-### `embed() failed: chonk did not return a vector`
-chonk's embed endpoint is `/memory/_mcp/ingest`, NOT `/embed`. Check that chonk is healthy: `curl http://host:8080/health`. If GPU errors, restart chonk or set CPU fallback.
+### `embed() failed: shivvr did not return a vector`
+shivvr's embed endpoint is `/memory/_mcp/ingest`, NOT `/embed`. Check that shivvr is healthy: `curl http://host:8080/health`. If GPU errors, restart shivvr or set CPU fallback.
 
 ### Container can't reach host services (bridge networking)
 Use `host.docker.internal` or `172.17.0.1` instead of `localhost`. Or use `--network host` on Linux.
