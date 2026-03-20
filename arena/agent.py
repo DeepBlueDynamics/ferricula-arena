@@ -110,12 +110,33 @@ class Agent:
                 cmd.extend(["-e", f"RADIO_URL={radio_bridge}"])
 
         cmd.append(FERRICULA_IMAGE)
-        container_id = _run_docker(*cmd).strip()
+
+        # Handle existing container with same name
+        try:
+            container_id = _run_docker(*cmd).strip()
+        except RuntimeError as e:
+            if "already in use" in str(e):
+                # Remove stale container and retry
+                _run_docker("rm", "-f", container_name)
+                container_id = _run_docker(*cmd).strip()
+            elif "port is already allocated" in str(e):
+                # Port conflict — try to stop whatever's on it
+                _run_docker("rm", "-f", container_name)
+                container_id = _run_docker(*cmd).strip()
+            else:
+                raise
 
         self.state.container_id = container_id
         self.state.container_name = container_name
         self.state.port = self.port
         self.state.created_at = time.time()
+
+        # Write agent.toml into container so the dashboard shows the name
+        agent_toml = f'name = "{self.name}"\nrole = "{self.config.role}"\nvoice = "{self.config.personality.voice}"\n'
+        subprocess.run(
+            ["docker", "exec", container_name, "sh", "-c", f"echo '{agent_toml}' > /data/agent.toml"],
+            capture_output=True, timeout=10,
+        )
 
         # Initialize client
         self.ferricula = FerriculaClient(
