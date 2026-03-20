@@ -58,7 +58,7 @@ async def cmd_train(args):
         if candidate.exists():
             dataset = str(candidate)
 
-    report = await run_train(agent, dataset, dreams=args.dreams)
+    report = await run_train(agent, dataset, dreams=args.dreams, progress=True)
 
     # Run advocate audit after training if configured
     if agent.config.advocate.review_interval == "after_training":
