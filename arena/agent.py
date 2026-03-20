@@ -22,7 +22,7 @@ import httpx
 from .clients import ChonkClient, FerriculaClient, DreamReport, StatusResult
 from .config import AgentConfig, load_config
 
-FERRICULA_IMAGE = "gcr.io/gnosis-459403/ferricula:latest"
+FERRICULA_IMAGE = "kord/ferricula:latest"
 
 
 @dataclass
