@@ -115,23 +115,22 @@ async def train(agent: Agent, dataset_dir: str | Path, *,
             print(f"[{i+1}/{len(files)}] {fpath.name}", end="")
             sys.stdout.flush()
 
-        # Read file — PDFs need PyMuPDF for text extraction
+        # Read file
         if fpath.suffix.lower() == ".pdf":
             try:
-                import fitz  # PyMuPDF
-                doc = fitz.open(str(fpath))
-                pages = [page.get_text() for page in doc]
+                import pdfplumber
+                with pdfplumber.open(str(fpath)) as pdf:
+                    pages = [p.extract_text() or "" for p in pdf.pages]
                 text = "\n\n".join(p for p in pages if p.strip())
-                doc.close()
-                if progress and not text.strip():
-                    print(" (no extractable text)")
+                if progress:
+                    print(f" ({len(pdf.pages)} pages)", end="")
             except ImportError:
                 if progress:
-                    print(" ERROR: pip install PyMuPDF needed for PDFs")
+                    print(" ERROR: pip install pdfplumber")
                 continue
             except Exception as e:
                 if progress:
-                    print(f" ERROR reading PDF: {e}")
+                    print(f" ERROR: {e}")
                 continue
         else:
             text = fpath.read_text(encoding="utf-8", errors="replace")
