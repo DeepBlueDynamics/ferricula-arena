@@ -92,6 +92,11 @@ class Agent:
             "DREAM_THRESHOLD_BYTES": str(self.config.memory.dream_threshold_bytes),
         }
 
+        # Pass through AGENT_KEY for LLM query planner inside container
+        agent_key = os.environ.get("AGENT_KEY", "")
+        if agent_key:
+            env_vars["AGENT_KEY"] = agent_key
+
         cmd = ["run", "-d", "--name", container_name]
         for k, v in env_vars.items():
             cmd.extend(["-e", f"{k}={v}"])

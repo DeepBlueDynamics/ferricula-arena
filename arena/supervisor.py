@@ -54,7 +54,8 @@ class Supervisor:
 
     async def create_agent(self, template_path: str, *,
                            name: Optional[str] = None,
-                           port: int = 0) -> Agent:
+                           port: int = 0,
+                           progress: bool = True) -> Agent:
         """Create a new agent from a TOML template.
 
         Spins up a ferricula Docker container, waits for readiness,
@@ -69,6 +70,9 @@ class Supervisor:
         if not port:
             port = self._next_port()
 
+        if progress:
+            print(f"[create] {agent_name} on :{port} (template: {template_path})")
+
         agent = Agent(config, port=port, name=agent_name)
         container_id = await agent.create()
 
@@ -76,27 +80,34 @@ class Supervisor:
         self._save_registry()
 
         identity = agent.state.identity or {}
-        print(f"[created] {agent_name} on :{port}")
-        print(f"  container: {container_id[:12]}")
-        print(f"  identity: {identity.get('hexagram', {}).get('name', '?')}")
+        if progress:
+            print(f"[created] {agent_name} on :{port}")
+            print(f"  container: {container_id[:12]}")
+            print(f"  identity: {identity.get('hexagram', {}).get('name', '?')}")
 
         return agent
 
-    async def stop_agent(self, name: str):
+    async def stop_agent(self, name: str, *, progress: bool = True):
         """Stop an agent's container (data persists)."""
+        if progress:
+            print(f"[stop] {name}...")
         agent = self._get_agent(name)
         await agent.stop()
         self._save_registry()
-        print(f"[stopped] {name}")
+        if progress:
+            print(f"[stopped] {name}")
 
-    async def resume_agent(self, name: str) -> Agent:
+    async def resume_agent(self, name: str, *, progress: bool = True) -> Agent:
         """Restart a stopped agent's container."""
+        if progress:
+            print(f"[resume] {name}...")
         # Try live agents first
         if name in self.agents:
             agent = self.agents[name]
             await agent.resume()
             self._save_registry()
-            print(f"[resumed] {name} on :{agent.port}")
+            if progress:
+                print(f"[resumed] {name} on :{agent.port}")
             return agent
 
         # Reconstruct from registry
@@ -117,22 +128,28 @@ class Supervisor:
         await agent.resume()
         self.agents[name] = agent
         self._save_registry()
-        print(f"[resumed] {name} on :{agent.port}")
+        if progress:
+            print(f"[resumed] {name} on :{agent.port}")
         return agent
 
-    async def destroy_agent(self, name: str):
+    async def destroy_agent(self, name: str, *, progress: bool = True):
         """Stop and remove an agent's container + volume. Irreversible."""
+        if progress:
+            print(f"[destroy] {name}...")
         agent = self._get_agent(name)
         await agent.destroy()
         self.agents.pop(name, None)
         self._registry.pop(name, None)
         self._save_registry()
-        print(f"[destroyed] {name}")
+        if progress:
+            print(f"[destroyed] {name}")
 
     # ── Monitoring ──────────────────────────────────────────────────────
 
-    async def list_agents(self) -> list[dict]:
+    async def list_agents(self, *, progress: bool = False) -> list[dict]:
         """List all registered agents with their status."""
+        if progress:
+            print(f"[list] checking {len(self._registry)} registered agents...")
         results = []
         for name, reg in self._registry.items():
             entry = {
@@ -172,13 +189,23 @@ class Supervisor:
                     entry["status"] = "stopped"
 
             results.append(entry)
+        if progress:
+            running = sum(1 for r in results if r["status"] == "running")
+            print(f"[list] {len(results)} agents ({running} running)")
         return results
 
-    async def health(self, name: str) -> dict:
+    async def health(self, name: str, *, progress: bool = False) -> dict:
         """Get detailed health metrics for an agent."""
+        if progress:
+            print(f"[health] checking {name}...")
         agent = self._get_agent(name)
         status = await agent.status()
         identity = await agent.ferricula.identity()
+
+        if progress:
+            print(f"[health] {name}: {status.active} active, "
+                  f"{status.keystones} keystones, "
+                  f"{status.graph_edges} edges")
 
         return {
             "name": name,
@@ -191,22 +218,33 @@ class Supervisor:
 
     # ── Dream scheduling ────────────────────────────────────────────────
 
-    async def dream_all(self, cycles: int = 1):
+    async def dream_all(self, cycles: int = 1, *, progress: bool = True):
         """Run dream cycles on all running agents."""
+        if progress:
+            print(f"[dream_all] {cycles} cycle(s) across {len(self.agents)} agents")
         for name, agent in self.agents.items():
             if not agent.ferricula:
+                if progress:
+                    print(f"  {name}: skipped (no client)")
                 continue
             try:
                 if not await agent.ferricula.available():
+                    if progress:
+                        print(f"  {name}: skipped (unreachable)")
                     continue
             except Exception:
+                if progress:
+                    print(f"  {name}: skipped (error checking availability)")
                 continue
 
-            print(f"[dream] {name}", end="")
+            if progress:
+                print(f"  [dream] {name}", end="")
             for _ in range(cycles):
                 report = await agent.offer()
-                print(f" ~", end="")
-            print(f" decayed={report.decayed} consolidated={report.consolidated}")
+                if progress:
+                    print(f" ~", end="")
+            if progress:
+                print(f" decayed={report.decayed} consolidated={report.consolidated}")
 
     # ── Internals ───────────────────────────────────────────────────────
 

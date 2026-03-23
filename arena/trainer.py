@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+import httpx
+
 from .agent import Agent
 from .clients import DreamReport
 
@@ -139,9 +141,20 @@ async def train(agent: Agent, dataset_dir: str | Path, *,
                 print(" (empty, skipped)")
             continue
 
+        # Limit text size to prevent overwhelming shivvr
+        MAX_TEXT_CHARS = 500_000  # ~125 pages
+        if len(text) > MAX_TEXT_CHARS:
+            if progress:
+                print(f" (truncated from {len(text)} to {MAX_TEXT_CHARS} chars)", end="")
+            text = text[:MAX_TEXT_CHARS]
+
         # Chunk via shivvr
         try:
             chunks = await agent.chonk.chunk_and_embed(text)
+        except httpx.TimeoutException:
+            if progress:
+                print(f" ERROR: shivvr timeout (text too large: {len(text)} chars)")
+            continue
         except Exception as e:
             if progress:
                 print(f" ERROR chunking: {e}")

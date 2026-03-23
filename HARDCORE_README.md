@@ -10,7 +10,7 @@ Technical setup guide. No fluff.
 |-----------|---------|---------|
 | Python | 3.10+ | Arena orchestrator, CLI, TUI |
 | Docker | 29+ | ferricula containers |
-| ferricula image | `gcr.io/gnosis-459403/ferricula:latest` | Memory engine per agent |
+| ferricula image | `kord/ferricula:latest` | Memory engine per agent |
 | shivvr | Running on network | Embedding (gtr-t5-base 768d) + vec2text inversion |
 | Anthropic API key | `AGENT_KEY` env var | LLM for agent reasoning + query rewriting |
 | sdr-random (optional) | Running on host with RTL-SDR | Hardware entropy for dream cycles |
@@ -61,7 +61,7 @@ python -m arena.cli create --template agents/reader.toml --name Scholar --port 8
 ## Pull the ferricula image
 
 ```bash
-docker pull gcr.io/gnosis-459403/ferricula:latest
+docker pull kord/ferricula:latest
 ```
 
 Image is public. No auth needed. ~30MB compressed (debian-slim + static Rust binary).
@@ -89,7 +89,7 @@ arena create --template agents/reader.toml --name "Scholar" --port 8770
 ```
 
 This:
-1. Pulls `gcr.io/gnosis-459403/ferricula:latest` if not present
+1. Pulls `kord/ferricula:latest` if not present
 2. Creates Docker volume `scholar-data`
 3. Starts container with `--network host` (or bridge with appropriate env vars)
 4. Sets `PORT`, `CHONK_URL`, `RADIO_URL`, `CLOCK_TICK_SECS` from template
@@ -106,7 +106,7 @@ docker run -d \
   -e RADIO_URL=http://localhost:9090 \
   -e CLOCK_TICK_SECS=43200 \
   -v scholar-data:/data \
-  gcr.io/gnosis-459403/ferricula
+  kord/ferricula
 
 # Verify:
 curl http://localhost:8770/status
@@ -129,7 +129,7 @@ docker run -d \
   -e RADIO_URL=http://host.docker.internal:9090 \
   -e CLOCK_TICK_SECS=43200 \
   -v scholar-data:/data \
-  gcr.io/gnosis-459403/ferricula
+  kord/ferricula
 ```
 
 Use `host.docker.internal` for services on the host. On Linux bridge, use `172.17.0.1` or add `--add-host=host.docker.internal:host-gateway`.
@@ -277,7 +277,7 @@ docker run --rm -v scholar-data:/data alpine tar czf - -C /data . | \
   ssh user@target "docker volume create scholar-data && docker run --rm -i -v scholar-data:/data alpine tar xzf - -C /data"
 
 # Start on target
-ssh user@target "docker run -d --name scholar --network host -e PORT=8770 -e CHONK_URL=http://localhost:8080 -v scholar-data:/data gcr.io/gnosis-459403/ferricula"
+ssh user@target "docker run -d --name scholar --network host -e PORT=8770 -e CHONK_URL=http://localhost:8080 -v scholar-data:/data kord/ferricula"
 ```
 
 ## MCP integration
