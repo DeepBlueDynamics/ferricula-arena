@@ -65,17 +65,28 @@ class AgentDetail:
 
     @property
     def horoscope(self) -> str:
-        return self.identity.get("horoscope", "?")
+        h = self.identity.get("horoscope", {})
+        if isinstance(h, dict):
+            return h.get("sign_name", "?")
+        return str(h) if h else "?"
 
     @property
     def emotions(self) -> str:
+        p = self.identity.get("primary_emotion", "?")
+        s = self.identity.get("secondary_emotion", "?")
+        if p != "?":
+            return f"{p}/{s}"
         e = self.identity.get("emotions", {})
         return f"{e.get('primary', '?')}/{e.get('secondary', '?')}"
 
     @property
     def active_archetypes(self) -> list[str]:
-        arcs = self.identity.get("archetypes", {})
-        return [k for k, v in arcs.items() if isinstance(v, str) and v != "Dormant"]
+        arcs = self.identity.get("archetypes", [])
+        if isinstance(arcs, list):
+            return [a.get("role", "?") for a in arcs if a.get("active") or a.get("state") not in (None, "Dormant")]
+        if isinstance(arcs, dict):
+            return [k for k, v in arcs.items() if isinstance(v, str) and v != "Dormant"]
+        return []
 
 
 async def fetch_detail(name: str, port: int) -> AgentDetail:
