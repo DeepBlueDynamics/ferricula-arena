@@ -368,37 +368,52 @@ class MonitorApp(App):
         yield Footer()
 
     def on_mount(self):
+        # Do initial poll, then schedule repeating
+        self.set_timer(0.5, self._start_poll)
         self._refresh_timer = self.set_interval(
-            REFRESH_INTERVAL, self._poll_agents,
+            REFRESH_INTERVAL, self._start_poll,
         )
-        self._poll_agents()
 
-    @work(exclusive=True)
-    async def _poll_agents(self):
-        """Fetch agent list and update the table."""
-        if self.direct_agents:
-            agents = []
-            for da in self.direct_agents:
-                name = da.get("name", f"port-{da['port']}")
-                port = da["port"]
-                agents.append({"name": name, "port": port, "model": "?", "status": "running"})
-        else:
-            try:
-                agents = await self.supervisor.list_agents()
-            except Exception:
+    def _start_poll(self):
+        """Kick off the async poll worker."""
+        self._do_poll()
+
+    @work(exclusive=True, thread=True)
+    def _do_poll(self):
+        """Fetch agent data in a thread, then update UI."""
+        import asyncio as _aio
+
+        async def _fetch():
+            if self.direct_agents:
                 agents = []
+                for da in self.direct_agents:
+                    name = da.get("name", f"port-{da['port']}")
+                    port = da["port"]
+                    agents.append({"name": name, "port": port, "model": "?", "status": "running"})
+            else:
+                try:
+                    agents = await self.supervisor.list_agents()
+                except Exception:
+                    agents = []
 
-        # Fetch details concurrently
-        tasks = [fetch_detail(a["name"], a["port"]) for a in agents]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+            tasks = [fetch_detail(a["name"], a["port"]) for a in agents]
+            results = await _aio.gather(*tasks, return_exceptions=True)
 
-        self.details = {}
-        for result in results:
-            if isinstance(result, AgentDetail):
-                self.details[result.name] = result
+            details = {}
+            for result in results:
+                if isinstance(result, AgentDetail):
+                    details[result.name] = result
 
-        # Update table on the main thread
-        self._update_table(agents)
+            return agents, details
+
+        loop = _aio.new_event_loop()
+        try:
+            agents, details = loop.run_until_complete(_fetch())
+        finally:
+            loop.close()
+
+        self.details = details
+        self.app.call_from_thread(self._update_table, agents)
 
     def _update_table(self, agents: list[dict]):
         table = self.query_one("#agent-table", AgentTable)
@@ -446,7 +461,7 @@ class MonitorApp(App):
     # ── Actions ─────────────────────────────────────────────────────────
 
     def action_refresh(self):
-        self._poll_agents()
+        self._start_poll()
 
     def action_toggle_chat(self):
         chat = self.query_one("#chat-panel", ChatPanel)
