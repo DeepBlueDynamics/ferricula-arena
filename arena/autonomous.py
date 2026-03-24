@@ -26,12 +26,12 @@ from .clients import FerriculaClient, ChonkClient, parse_status
 from .tools import web_search, fetch_page
 
 
-# How often the autonomous loop ticks (seconds)
-THINK_INTERVAL = 45
-# Chance of initiating a thought per tick (0-1)
-THOUGHT_PROBABILITY = 0.35
-# Chance of web searching per tick
-SEARCH_PROBABILITY = 0.15
+# Base poll interval — how often we check the radio (seconds)
+POLL_INTERVAL = 10
+# Entropy thresholds — maps radio noise to mental activity
+# More entropy = more active mind. Quiet spectrum = quiet mind.
+ENTROPY_THINK_THRESHOLD = 4    # bytes in reservoir to trigger thought
+ENTROPY_SEARCH_THRESHOLD = 16  # bytes in reservoir to trigger curiosity search
 
 
 async def autonomous_loop(
@@ -56,61 +56,74 @@ async def autonomous_loop(
         interrupt_callback: callable(text) to print a thought to the chat
         stop_event: set this to stop the loop
     """
-    last_dream_check = 0
-    last_thought = time.time()
+    import re
+    last_dream_count = 0
+    last_reservoir = 0
     thought_count = 0
 
     while not stop_event.is_set():
         try:
-            await asyncio.sleep(THINK_INTERVAL)
+            await asyncio.sleep(POLL_INTERVAL)
         except asyncio.CancelledError:
             return
 
         if stop_event.is_set():
             return
 
-        now = time.time()
-
-        # ── Check if a dream happened recently ──
+        # ── Read the radio — the noise floor IS the heartbeat ──
+        reservoir = 0
+        current_dreams = 0
+        radio_up = False
         try:
             clock_resp = await ferricula._get("clock")
             clock_data = json.loads(clock_resp)
             clock_text = clock_data.get("result", "")
-            # Parse dream count
-            import re
+
+            res_match = re.search(r"reservoir=(\d+)B", clock_text)
+            reservoir = int(res_match.group(1)) if res_match else 0
+
             dream_match = re.search(r"dreams=(\d+)", clock_text)
             current_dreams = int(dream_match.group(1)) if dream_match else 0
 
-            if current_dreams > last_dream_check and last_dream_check > 0:
-                # A dream happened! Reflect on it.
-                interrupt_callback(
-                    f"\n  [{name} stirs — a dream just passed. "
-                    f"{current_dreams} total dreams.]\n"
-                )
-                # Small chance of sharing what the dream surfaced
-                if random.random() < 0.5:
-                    await _dream_reflection(
-                        ferricula, chonk, name, api_key, model,
-                        identity, interrupt_callback,
-                    )
-            last_dream_check = current_dreams
+            radio_up = "connected" in clock_text or reservoir > 0 or current_dreams > 0
         except Exception:
-            pass
+            continue
 
-        # ── Random thought — recall a memory and react ──
-        if random.random() < THOUGHT_PROBABILITY:
-            await _spontaneous_thought(
-                ferricula, chonk, name, api_key, model,
-                identity, interrupt_callback,
+        # ── Dream detection ──
+        if current_dreams > last_dream_count and last_dream_count > 0:
+            interrupt_callback(
+                f"\n  [{name} stirs — dream #{current_dreams} just passed]\n"
             )
-            thought_count += 1
+            if random.random() < 0.6:
+                await _dream_reflection(
+                    ferricula, chonk, name, api_key, model,
+                    identity, interrupt_callback,
+                )
+        last_dream_count = current_dreams
 
-        # ── Random web search — curiosity-driven ──
-        elif random.random() < SEARCH_PROBABILITY and api_key:
-            await _curiosity_search(
-                ferricula, chonk, name, api_key, model,
-                identity, interrupt_callback,
-            )
+        # ── Entropy-driven thinking ──
+        # The radio noise floor modulates mental activity.
+        # More accumulated entropy = more restless mind.
+        entropy_delta = reservoir - last_reservoir
+        last_reservoir = reservoir
+
+        if entropy_delta > 0:
+            # Fresh entropy arrived — the mind stirs
+            if reservoir >= ENTROPY_SEARCH_THRESHOLD and api_key:
+                # High entropy — curiosity peaks, go search
+                await _curiosity_search(
+                    ferricula, chonk, name, api_key, model,
+                    identity, interrupt_callback,
+                )
+                thought_count += 1
+            elif reservoir >= ENTROPY_THINK_THRESHOLD:
+                # Moderate entropy — a thought surfaces
+                await _spontaneous_thought(
+                    ferricula, chonk, name, api_key, model,
+                    identity, interrupt_callback,
+                )
+                thought_count += 1
+            # Below threshold: quiet mind. The radio is silent. So is the agent.
 
 
 async def _spontaneous_thought(
