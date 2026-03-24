@@ -28,6 +28,11 @@ class DreamReport:
     edges_created: int = 0
     keystones_promoted: int = 0
     active_archetypes: list[str] = field(default_factory=list)
+    decayed_ids: list[int] = field(default_factory=list)
+    forgiven_ids: list[int] = field(default_factory=list)
+    consolidated_ids: list[int] = field(default_factory=list)
+    skg_emerging: list[str] = field(default_factory=list)
+    skg_decaying: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -91,6 +96,18 @@ def parse_dream_report(text: str) -> DreamReport:
     m = re.search(r"active_archetypes=\[([^\]]*)\]", inner)
     if m and m.group(1):
         report.active_archetypes = [s.strip() for s in m.group(1).split(",") if s.strip()]
+    # Parse memory IDs affected by this dream
+    for id_key in ("decayed_ids", "forgiven_ids", "consolidated_ids"):
+        m = re.search(rf"{id_key}=\[([^\]]*)\]", inner)
+        if m and m.group(1):
+            setattr(report, id_key, [int(x) for x in m.group(1).split(",") if x.strip()])
+    # Parse SKG emerging/decaying term pairs
+    m = re.search(r"emerging=\[([^\]]*)\]", inner)
+    if m and m.group(1):
+        report.skg_emerging = [s.strip() for s in m.group(1).split(",") if s.strip()]
+    m = re.search(r"decaying=\[([^\]]*)\]", inner)
+    if m and m.group(1):
+        report.skg_decaying = [s.strip() for s in m.group(1).split(",") if s.strip()]
     return report
 
 
@@ -291,6 +308,11 @@ class FerriculaClient:
 
     async def dream(self) -> DreamReport:
         resp = await self._post("dream")
+        return parse_dream_report(resp)
+
+    async def dream_latest(self) -> DreamReport:
+        """GET /dream/latest — last dream report without triggering a new one."""
+        resp = await self._get("dream/latest")
         return parse_dream_report(resp)
 
     async def offer(self, entropy_hex: str) -> DreamReport:

@@ -148,12 +148,10 @@ async def _spontaneous_thought(
         if not text or len(text) < 10:
             return
 
-        # Ask the LLM for a brief internal reaction — not a full response
-        primary_emo = identity.get("primary_emotion", "")
+        # Ask the LLM for a brief internal reaction — no identity labels
         system = (
-            f"You are {name}'s inner monologue. Not speaking to anyone. "
-            f"Just a thought surfacing. One or two sentences max. "
-            f"Emotional baseline: {primary_emo}. "
+            "You are the dreamer's inner monologue. Not speaking to anyone. "
+            "Just a thought surfacing. One or two sentences max. "
             f"React to this memory fragment that just surfaced: \"{text}\""
         )
 
@@ -197,16 +195,45 @@ async def _spontaneous_thought(
 async def _dream_reflection(
     ferricula, chonk, name, api_key, model, identity, callback,
 ):
-    """After a dream, reflect on what changed. Record dream to journal."""
+    """After a dream, reflect on what actually changed in memory."""
     try:
-        status = await ferricula.status()
+        # Fetch the latest dream report — has IDs of affected memories
+        report = await ferricula.dream_latest()
+
+        # Gather text from memories that shifted during this dream
+        changed_ids = []
+        if report.decayed_ids:
+            changed_ids.extend(report.decayed_ids[:10])
+        if report.consolidated_ids:
+            changed_ids.extend(report.consolidated_ids[:5])
+        if report.forgiven_ids:
+            changed_ids.extend(report.forgiven_ids[:5])
+
+        memory_texts = []
+        for mid in changed_ids[:15]:  # cap fetches
+            try:
+                row = await ferricula.get_row(mid)
+                text = row.get("tags", {}).get("text", "")
+                if text and len(text) >= 5:
+                    memory_texts.append(text[:120])
+            except Exception:
+                continue
+
+        if not memory_texts:
+            return
+
+        # Build prompt from actual memory content — no identity labels
+        memories_block = "\n".join(f"- {t}" for t in memory_texts[:8])
+        skg_line = ""
+        if report.skg_emerging:
+            pairs = ", ".join(report.skg_emerging[:3])
+            skg_line = f"\nNew connections forming between: {pairs}"
 
         system = (
-            f"You are {name}'s post-dream awareness. A dream just completed. "
-            f"You have {status.active} active memories, {status.keystones} keystones, "
-            f"{status.graph_edges} edges. "
-            f"Describe what you saw in the dream — a brief vivid image or scene. "
-            f"Two sentences max. This is a dream, not analysis. Be visual."
+            "These memories shifted during sleep:\n"
+            f"{memories_block}"
+            f"{skg_line}\n\n"
+            "Describe the dream as a visual scene. Two sentences."
         )
 
         async with httpx.AsyncClient() as client:
@@ -238,18 +265,16 @@ async def _dream_reflection(
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "type": "dream",
             "description": dream_text,
-            "stats": {
-                "active": status.active,
-                "keystones": status.keystones,
-                "edges": status.graph_edges,
-            },
+            "source_memories": memory_texts[:8],
+            "skg_emerging": report.skg_emerging[:3],
+            "decayed": report.decayed,
+            "consolidated": report.consolidated,
         }
         with open(dream_log, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
         # ── Remember the dream as a dream-sourced memory ──
-        # Tagged so it's never confused with lived experience
-        if chonk and random.random() < 0.7:  # 70% chance of remembering
+        if chonk and random.random() < 0.7:
             try:
                 vec = await chonk.embed(f"dream: {dream_text[:200]}")
                 dream_mid = int(time.time() * 1000) % (2**31)
@@ -261,11 +286,10 @@ async def _dream_reflection(
                         "text": f"[dream] {dream_text[:200]}",
                     },
                     "vector": [float(v) for v in vec],
-                    "decay_alpha": 0.018,  # dreams decay fast unless reinforced
+                    "decay_alpha": 0.018,
                     "importance": 0.2,
                 }
-                import json as _json
-                await ferricula._post("remember", _json.dumps(row))
+                await ferricula._post("remember", json.dumps(row))
             except Exception:
                 pass
 
@@ -293,11 +317,11 @@ async def _curiosity_search(
         if not text or len(text) < 10:
             return
 
-        # Ask the LLM what the agent would want to search for
+        # Ask the LLM what the agent would want to search for — no identity
         system = (
-            f"You are {name}. Given this memory fragment, what would you "
-            f"want to look up? Reply with ONLY a search query, nothing else. "
-            f"5 words max. If nothing interests you, reply with just 'pass'."
+            "You are the agent. Given this memory fragment, what would you "
+            "want to look up? Reply with ONLY a search query, nothing else. "
+            "5 words max. If nothing interests you, reply with just 'pass'."
         )
 
         async with httpx.AsyncClient() as client:
