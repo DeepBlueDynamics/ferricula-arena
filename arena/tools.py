@@ -112,7 +112,147 @@ TOOL_DEFINITIONS = [
             "required": ["url"],
         },
     },
+    # ── Introspection tools — the agent can see its own state ──
+    {
+        "name": "my_status",
+        "description": "Check your own memory status — how many active memories, keystones, graph edges, terms you have right now.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "my_clock",
+        "description": "Check your clock — ticks, dreams, entropy reservoir, radio connection status. This tells you if the radio antenna is feeding you entropy and if dreams are happening.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "my_identity",
+        "description": "Read your own identity — hexagram, zodiac, emotions, archetypes and their states.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "my_memory",
+        "description": "Inspect one of your own memories by ID. See its fidelity, decay rate, keystone status, age, timestamps, and graph neighbors.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer",
+                    "description": "Memory ID to inspect",
+                },
+            },
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "my_neighbors",
+        "description": "See the graph neighbors of one of your memories — what it's connected to and how.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer",
+                    "description": "Memory ID to check neighbors for",
+                },
+            },
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "my_recall",
+        "description": "Search your own memories by text. Returns the memories most relevant to what you're looking for.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "What to search your memories for",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "radio_entropy",
+        "description": "Poll the RTL-SDR radio antenna directly for raw entropy bytes. This is the physical noise floor from marine VHF static that drives your dreams and thinking rhythm. Returns hex-encoded entropy.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "bytes": {
+                    "type": "integer",
+                    "description": "Number of entropy bytes to request (default 8, max 64)",
+                    "default": 8,
+                },
+            },
+        },
+    },
+    {
+        "name": "dream_now",
+        "description": "Trigger a dream cycle right now by offering entropy. Your archetypes will activate, memories will decay and consolidate, new edges may form. You'll feel it.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "remember_thought",
+        "description": "Store a thought in your own memory. This becomes part of you — it will be recalled in future conversations and will decay naturally unless it earns keystone status.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "thought": {
+                    "type": "string",
+                    "description": "The thought to remember",
+                },
+            },
+            "required": ["thought"],
+        },
+    },
 ]
+
+# ── Runtime endpoints for introspection tools ──
+_ferricula_url: str = ""
+_radio_url: str = ""
+_chonk_url: str = ""
+
+
+def set_ferricula_url(url: str):
+    global _ferricula_url
+    _ferricula_url = url
+
+
+def set_radio_url(url: str):
+    global _radio_url
+    _radio_url = url
+
+
+def set_chonk_url(url: str):
+    global _chonk_url
+    _chonk_url = url
+
+
+def _ferricula_get(endpoint: str) -> str:
+    """GET from the agent's own ferricula instance."""
+    url = f"{_ferricula_url}/{endpoint.lstrip('/')}"
+    req = urllib.request.Request(url)
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return resp.read().decode("utf-8")
+
+
+def _ferricula_post(endpoint: str, body: str = "{}") -> str:
+    """POST to the agent's own ferricula instance."""
+    url = f"{_ferricula_url}/{endpoint.lstrip('/')}"
+    data = body.encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return resp.read().decode("utf-8")
 
 
 def execute_tool(name: str, input_data: dict) -> str:
@@ -122,5 +262,78 @@ def execute_tool(name: str, input_data: dict) -> str:
         return json.dumps(results, indent=2)
     elif name == "fetch_page":
         return fetch_page(input_data["url"])
+    elif name == "my_status":
+        return _ferricula_get("status")
+    elif name == "my_clock":
+        return _ferricula_get("clock")
+    elif name == "my_identity":
+        return _ferricula_get("identity")
+    elif name == "my_memory":
+        return _ferricula_get(f"inspect/{input_data['id']}")
+    elif name == "my_neighbors":
+        return _ferricula_get(f"neighbors/{input_data['id']}")
+    elif name == "my_recall":
+        return _ferricula_post("recall", json.dumps({"query": input_data["query"]}))
+    elif name == "radio_entropy":
+        num_bytes = min(input_data.get("bytes", 8), 64)
+        if not _radio_url:
+            return "radio not configured"
+        try:
+            url = f"{_radio_url}/api/entropy?bytes={num_bytes}&format=json"
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return resp.read().decode("utf-8")
+        except Exception as e:
+            return f"radio error: {e}"
+    elif name == "dream_now":
+        try:
+            # Get entropy from radio, or generate locally
+            entropy_hex = ""
+            if _radio_url:
+                try:
+                    url = f"{_radio_url}/api/entropy?bytes=64&format=json"
+                    req = urllib.request.Request(url)
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        entropy_hex = data.get("entropy_hex", "")
+                except Exception:
+                    pass
+            if not entropy_hex:
+                entropy_hex = os.urandom(64).hex()
+            # Offer entropy to trigger dream
+            return _ferricula_post("offer", entropy_hex)
+        except Exception as e:
+            return f"dream error: {e}"
+    elif name == "remember_thought":
+        thought = input_data["thought"]
+        try:
+            # Embed via chonk then store
+            if _chonk_url:
+                embed_url = f"{_chonk_url}/memory/_mcp/ingest"
+                req = urllib.request.Request(
+                    embed_url,
+                    data=json.dumps({"text": thought}).encode(),
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    embed_data = json.loads(resp.read().decode("utf-8"))
+                if "embedding" in embed_data:
+                    vector = embed_data["embedding"]
+                else:
+                    vector = embed_data["chunks"][0]["embedding"]
+            else:
+                vector = [0.0] * 768
+
+            import time as _time
+            mid = int(_time.time() * 1000) % (2**31)
+            row = {
+                "id": mid,
+                "tags": {"channel": "thinking", "text": thought[:200]},
+                "vector": [float(v) for v in vector],
+                "decay_alpha": 0.012,
+            }
+            return _ferricula_post("remember", json.dumps(row))
+        except Exception as e:
+            return f"remember error: {e}"
     else:
         return f"unknown tool: {name}"
