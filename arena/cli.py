@@ -90,13 +90,63 @@ async def cmd_audit(args):
 
 async def cmd_chat(args):
     """Interactive chat with an agent."""
-    sup = _get_supervisor()
-    agent = await sup.resume_agent(args.agent)
+    import os
+    from .agent import Agent
+    from .clients import ChonkClient, FerriculaClient
+    from .config import AgentConfig, PersonalityConfig, MemoryConfig
 
-    identity = agent.state.identity or {}
-    hex_name = identity.get("hexagram", {}).get("name", "")
-    print(f"[chat] {agent.name} ({hex_name})")
-    print(f"  model: {agent.config.model}")
+    if args.port:
+        # Direct connection mode — no supervisor needed
+        url = f"http://localhost:{args.port}"
+        chonk_url = args.chonk or os.environ.get("CHONK_URL", "http://nemesis:8080")
+        ferricula = FerriculaClient(url, args.agent or "agent")
+        chonk = ChonkClient(chonk_url)
+
+        if not await ferricula.available():
+            print(f"[error] ferricula not reachable at {url}")
+            return
+
+        identity = await ferricula.identity()
+        name = identity.get("name", args.agent or "agent")
+        hex_name = identity.get("hexagram", {}).get("name", "")
+        hex_num = identity.get("hexagram", {}).get("number", "")
+        zodiac = identity.get("horoscope", {}).get("sign_name", "")
+        primary_emo = identity.get("primary_emotion", "")
+        secondary_emo = identity.get("secondary_emotion", "")
+
+        # Build a minimal Agent with the right config
+        config = AgentConfig(
+            name=name,
+            role=args.role or f"Character agent — {name}",
+            model=args.model or "claude-sonnet-4-6",
+            personality=PersonalityConfig(
+                trait="In character",
+                voice="Speak as the character naturally would",
+                focus=[],
+            ),
+            memory=MemoryConfig(chonk_url=chonk_url),
+        )
+        agent = Agent(config, port=args.port, name=name)
+        agent.ferricula = ferricula
+        agent.chonk = chonk
+        agent.state.identity = identity
+    else:
+        sup = _get_supervisor()
+        agent = await sup.resume_agent(args.agent)
+        identity = agent.state.identity or {}
+        name = agent.name
+        hex_name = identity.get("hexagram", {}).get("name", "")
+        hex_num = identity.get("hexagram", {}).get("number", "")
+        zodiac = identity.get("horoscope", {}).get("sign_name", "")
+        primary_emo = identity.get("primary_emotion", "")
+        secondary_emo = identity.get("secondary_emotion", "")
+
+    status = await agent.ferricula.status()
+    print(f"\n  {name}")
+    if hex_name:
+        print(f"  Hexagram #{hex_num} {hex_name} | {zodiac} | {primary_emo}/{secondary_emo}")
+    print(f"  {status.active} active memories, {status.keystones} keystones, {status.graph_edges} edges")
+    print(f"  model: {agent._model}")
     print(f"  type 'quit' to exit, 'status' for stats, 'dream' to trigger dream\n")
 
     while True:
@@ -112,9 +162,9 @@ async def cmd_chat(args):
             print("[bye]")
             break
         if user_input.lower() == "status":
-            status = await agent.status()
-            print(f"  active={status.active} keystones={status.keystones} "
-                  f"edges={status.graph_edges} dreams={agent.state.total_dreams}")
+            s = await agent.ferricula.status()
+            print(f"  active={s.active} keystones={s.keystones} "
+                  f"edges={s.graph_edges} dreams={agent.state.total_dreams}")
             continue
         if user_input.lower() == "dream":
             report = await agent.offer()
@@ -126,7 +176,7 @@ async def cmd_chat(args):
 
         try:
             reply = await agent.chat(user_input)
-            print(f"\n{agent.name}> {reply}\n")
+            print(f"\n{name}> {reply}\n")
         except Exception as e:
             print(f"  [error] {e}")
 
@@ -233,7 +283,12 @@ def main():
 
     # chat
     p = sub.add_parser("chat", help="Interactive chat with an agent")
-    p.add_argument("--agent", "-a", required=True, help="Agent name")
+    p.add_argument("--agent", "-a", help="Agent name (required unless --port)")
+    p.add_argument("--port", "-p", type=int, default=0,
+                   help="Connect directly to ferricula on this port")
+    p.add_argument("--chonk", help="Chonk/shivvr URL (default: CHONK_URL env or nemesis:8080)")
+    p.add_argument("--model", "-m", help="LLM model (default: claude-sonnet-4-6)")
+    p.add_argument("--role", help="Override agent role/system prompt")
 
     # list
     sub.add_parser("list", help="List all agents")

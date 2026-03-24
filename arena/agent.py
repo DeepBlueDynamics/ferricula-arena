@@ -273,19 +273,36 @@ class Agent:
         memories = await self.recall(user_message, k=recall_k)
         memory_texts = [m["text"] for m in memories if m["text"]]
 
-        # Build system prompt
+        # Build system prompt — use identity if available
         p = self.config.personality
-        system = (
-            f"You are {self.name}, {self.config.role}.\n"
-            f"Trait: {p.trait}\n"
-            f"Voice: {p.voice}\n"
-            f"Focus areas: {', '.join(p.focus)}\n\n"
-        )
+        identity = self.state.identity or {}
+
+        if identity.get("name") and identity["name"] != self.config.name:
+            # Identity was loaded from ferricula (character agent)
+            hex_info = identity.get("hexagram", {})
+            zodiac = identity.get("horoscope", {}).get("sign_name", "")
+            primary_emo = identity.get("primary_emotion", "")
+            secondary_emo = identity.get("secondary_emotion", "")
+            system = (
+                f"You ARE {self.name}. Not an AI pretending — you are this person.\n"
+                f"Role: {self.config.role}\n"
+                f"Speak exactly as {self.name} would. Use their cadence, their certainty, "
+                f"their vocabulary. Stay in character completely.\n"
+                f"Emotional baseline: {primary_emo}/{secondary_emo}\n\n"
+            )
+        else:
+            system = (
+                f"You are {self.name}, {self.config.role}.\n"
+                f"Trait: {p.trait}\n"
+                f"Voice: {p.voice}\n"
+                f"Focus areas: {', '.join(p.focus)}\n\n"
+            )
+
         if memory_texts:
-            system += "Your relevant memories:\n"
-            for t in memory_texts[:5]:
+            system += "Your memories (these are YOUR real memories, draw on them naturally):\n"
+            for t in memory_texts[:8]:
                 system += f"- {t}\n"
-            system += "\nDraw on these memories naturally. Don't list them.\n"
+            system += "\nSpeak from these memories as lived experience. Never say 'I recall' or 'my memories show'. Just be yourself.\n"
 
         # Call Claude
         async with httpx.AsyncClient() as client:
