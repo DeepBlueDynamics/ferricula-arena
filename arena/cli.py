@@ -186,18 +186,17 @@ async def cmd_chat(args):
         while True:
             try:
                 user_input = await loop.run_in_executor(None, _safe_input)
-            except (asyncio.CancelledError, KeyboardInterrupt, EOFError):
+            except BaseException:
                 user_input = None
 
             if user_input is None:
-                # Ctrl-C — ask to quit
                 print()
                 try:
                     confirm = await loop.run_in_executor(
                         None, lambda: _safe_input("  quit? (y/n) ")
                     )
-                except (asyncio.CancelledError, KeyboardInterrupt, EOFError):
-                    print("\n[bye]")
+                except BaseException:
+                    print("[bye]")
                     break
                 if confirm is None or confirm in ("y", "yes", ""):
                     print("[bye]")
@@ -231,19 +230,19 @@ async def cmd_chat(args):
             try:
                 reply = await agent.chat(user_input)
                 print(f"\n{name}> {reply}\n")
-            except (asyncio.CancelledError, KeyboardInterrupt):
-                print("\n  [interrupted — response cancelled]")
-                continue
-            except Exception as e:
+            except BaseException as e:
+                if isinstance(e, (KeyboardInterrupt, asyncio.CancelledError)):
+                    print("\n  [interrupted]")
+                    continue
                 print(f"  [error] {e}")
-    except (asyncio.CancelledError, KeyboardInterrupt):
+    except BaseException:
         print("\n[bye]")
     finally:
         stop_event.set()
         auto_task.cancel()
         try:
             await auto_task
-        except (asyncio.CancelledError, KeyboardInterrupt):
+        except BaseException:
             pass
 
 
@@ -408,10 +407,30 @@ def main():
         "dream": cmd_dream,
     }
 
-    try:
-        asyncio.run(dispatch[args.command](args))
-    except (KeyboardInterrupt, asyncio.CancelledError):
-        print("\n[bye]")
+    if args.command == "chat":
+        # Chat needs special signal handling — Python's asyncio.run
+        # converts SIGINT to CancelledError which bypasses our catch.
+        # Use a loop with custom signal handling instead.
+        import signal
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            # Ignore SIGINT at the asyncio level — let the chat REPL handle it
+            if hasattr(signal, 'SIGINT'):
+                loop.add_signal_handler(signal.SIGINT, lambda: None)
+        except NotImplementedError:
+            pass  # Windows doesn't support add_signal_handler
+        try:
+            loop.run_until_complete(dispatch["chat"](args))
+        except (KeyboardInterrupt, asyncio.CancelledError, SystemExit):
+            print("\n[bye]")
+        finally:
+            loop.close()
+    else:
+        try:
+            asyncio.run(dispatch[args.command](args))
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            print("\n[bye]")
 
 
 if __name__ == "__main__":
