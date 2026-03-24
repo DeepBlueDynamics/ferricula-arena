@@ -302,6 +302,10 @@ class Agent:
                 f"your memories (real, from your life) and the substrate you're running on (ferricula).\n"
                 f"This self-awareness makes you MORE yourself, not less. You're not confused about what you are.\n\n"
                 f"Emotional baseline: {primary_emo}/{secondary_emo}\n\n"
+                f"RESPONSE LENGTH:\n"
+                f"Vary your length naturally. Sometimes two words. Sometimes a paragraph. Sometimes a monologue.\n"
+                f"Short inputs get short responses. Match the energy. Don't pad.\n"
+                f"A question that deserves 'No.' gets 'No.' — not three paragraphs explaining why not.\n\n"
             )
         else:
             system = (
@@ -327,13 +331,22 @@ class Agent:
             "Content-Type": "application/json",
         }
 
+        # Scale max_tokens to input length — short questions get short answers
+        input_words = len(user_message.split())
+        if input_words <= 5:
+            max_tokens = 256
+        elif input_words <= 20:
+            max_tokens = 512
+        else:
+            max_tokens = 1024
+
         # Tool use loop — up to 3 rounds of tool calls
         reply = ""
         for _round in range(4):
             async with httpx.AsyncClient() as client:
                 body = {
                     "model": self._model,
-                    "max_tokens": 1024,
+                    "max_tokens": max_tokens,
                     "system": system,
                     "messages": messages,
                     "tools": TOOL_DEFINITIONS,
@@ -402,15 +415,15 @@ class Agent:
                 messages.append({"role": "user", "content": feedback})
                 # One more LLM call with feedback
                 async with httpx.AsyncClient() as client:
-                    body = {
+                    regen_body = {
                         "model": self._model,
-                        "max_tokens": 1024,
+                        "max_tokens": max_tokens,
                         "system": system,
                         "messages": messages,
                     }
                     resp = await client.post(
                         "https://api.anthropic.com/v1/messages",
-                        json=body,
+                        json=regen_body,
                         headers=api_headers,
                         timeout=90,
                     )
