@@ -422,10 +422,13 @@ def main():
             pass  # Windows doesn't support add_signal_handler
         try:
             loop.run_until_complete(dispatch["chat"](args))
-        except (KeyboardInterrupt, asyncio.CancelledError, SystemExit):
+        except BaseException:
             print("\n[bye]")
         finally:
-            loop.close()
+            try:
+                loop.close()
+            except BaseException:
+                pass
     else:
         try:
             asyncio.run(dispatch[args.command](args))
@@ -434,4 +437,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BaseException:
+        pass
