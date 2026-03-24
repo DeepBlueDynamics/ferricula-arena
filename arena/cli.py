@@ -153,8 +153,16 @@ async def cmd_chat(args):
         try:
             user_input = input(f"you> ").strip()
         except (EOFError, KeyboardInterrupt):
-            print("\n[bye]")
-            break
+            print()
+            try:
+                confirm = input("  quit? (y/n) ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print("\n[bye]")
+                break
+            if confirm in ("y", "yes", ""):
+                print("[bye]")
+                break
+            continue
 
         if not user_input:
             continue
@@ -177,6 +185,9 @@ async def cmd_chat(args):
         try:
             reply = await agent.chat(user_input)
             print(f"\n{name}> {reply}\n")
+        except KeyboardInterrupt:
+            print("\n  [interrupted — response cancelled]")
+            continue
         except Exception as e:
             print(f"  [error] {e}")
 
