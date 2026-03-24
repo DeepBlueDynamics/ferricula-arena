@@ -331,14 +331,8 @@ class Agent:
             "Content-Type": "application/json",
         }
 
-        # Scale max_tokens to input length — short questions get short answers
-        input_words = len(user_message.split())
-        if input_words <= 5:
-            max_tokens = 256
-        elif input_words <= 20:
-            max_tokens = 512
-        else:
-            max_tokens = 1024
+        # Default max_tokens — confer will override after first response
+        max_tokens = 1024
 
         # Tool use loop — up to 3 rounds of tool calls
         reply = ""
@@ -400,6 +394,7 @@ class Agent:
             confer_score = confer_data.get("score", 1.0)
             confer_guidance = confer_data.get("guidance", "")
             confer_flags = confer_data.get("flags", [])
+            recommended_tokens = confer_data.get("recommended_tokens", max_tokens)
 
             # If score is below threshold, regenerate with archetype feedback
             if confer_score < 0.5 and _round < 3:
@@ -417,7 +412,7 @@ class Agent:
                 async with httpx.AsyncClient() as client:
                     regen_body = {
                         "model": self._model,
-                        "max_tokens": max_tokens,
+                        "max_tokens": recommended_tokens,
                         "system": system,
                         "messages": messages,
                     }
