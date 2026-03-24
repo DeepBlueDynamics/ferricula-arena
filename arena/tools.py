@@ -479,6 +479,7 @@ def _ferricula_post(endpoint: str, body: str = "{}") -> str:
 
 def execute_tool(name: str, input_data: dict) -> str:
     """Execute a tool call and return the result as a string."""
+    global _agent_room
     if name == "web_search":
         results = web_search(input_data["query"])
         return json.dumps(results, indent=2)
@@ -583,7 +584,6 @@ def execute_tool(name: str, input_data: dict) -> str:
         return world_look(_agent_room, _agent_name)
     elif name == "go":
         from .world import move, available_tools as room_tools
-        global _agent_room
         target = input_data["room"]
         success, msg = move(_agent_name, _agent_room, target)
         if success:
