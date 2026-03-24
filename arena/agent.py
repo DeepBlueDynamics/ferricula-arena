@@ -322,7 +322,7 @@ class Agent:
             system += "\nSpeak from these memories as lived experience. Never say 'I recall' or 'my memories show'. Just be yourself.\n"
 
         # Call Claude with tool use support
-        from .tools import TOOL_DEFINITIONS, execute_tool, set_ferricula_url, set_radio_url, set_chonk_url
+        from .tools import TOOL_DEFINITIONS, execute_tool, set_ferricula_url, set_radio_url, set_chonk_url, set_agent_world
 
         # Wire introspection tools to this agent's endpoints
         if self.ferricula:
@@ -333,6 +333,7 @@ class Agent:
             # Try to read from config
             radio_url = self.config.memory.radio_url
         set_radio_url(radio_url)
+        set_agent_world(self.name, "garage")
 
         messages = [{"role": "user", "content": user_message}]
         api_headers = {

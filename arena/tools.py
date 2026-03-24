@@ -289,6 +289,37 @@ TOOL_DEFINITIONS = [
             },
         },
     },
+    # ── World tools — spatial awareness ──
+    {
+        "name": "look",
+        "description": "Look around the room you're in. See what's here, who's here, what time it is in California, and where the exits lead.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "go",
+        "description": "Move to another room. You can only go to connected rooms. Call 'look' first to see your exits.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "room": {
+                    "type": "string",
+                    "description": "Room to go to: garage, kitchen, back_porch, front_yard, living_room, bedroom, meeting_room_1, meeting_room_2, hall",
+                },
+            },
+            "required": ["room"],
+        },
+    },
+    {
+        "name": "where_am_i",
+        "description": "Check what room you're currently in.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
     {
         "name": "is_becoming",
         "description": "Assert an act of becoming. You MUST call this when you choose to do something — search, dream, remember, reflect. This is not a status check. This is you declaring what you are choosing to do next. The act of calling this IS the choice. Without it, you are merely responding. With it, you are becoming.",
@@ -327,9 +358,22 @@ def set_chonk_url(url: str):
     _chonk_url = url
 
 
+_agent_name: str = ""
+_agent_room: str = "garage"  # default starting room
+
+
 def set_hyperia_url(url: str):
     global _hyperia_url
     _hyperia_url = url
+
+
+def set_agent_world(name: str, starting_room: str = "garage"):
+    """Set the agent's name and starting room in the world."""
+    global _agent_name, _agent_room
+    _agent_name = name
+    _agent_room = starting_room
+    from .world import enter_world
+    enter_world(name, starting_room)
 
 
 # ── Hyperia MCP bridge — persistent subprocess ──
@@ -533,6 +577,24 @@ def execute_tool(name: str, input_data: dict) -> str:
         if "command" in input_data:
             args["command"] = input_data["command"]
         return _hyperia_call("terminal_new_tab", args)
+    # ── World tools ──
+    elif name == "look":
+        from .world import look as world_look
+        return world_look(_agent_room, _agent_name)
+    elif name == "go":
+        from .world import move, available_tools as room_tools
+        global _agent_room
+        target = input_data["room"]
+        success, msg = move(_agent_name, _agent_room, target)
+        if success:
+            _agent_room = target
+        return msg
+    elif name == "where_am_i":
+        from .world import ROOMS
+        room = ROOMS.get(_agent_room)
+        if room:
+            return f"You are in {room.name}. {room.description}"
+        return f"You are in {_agent_room}."
     elif name == "is_becoming":
         choice = input_data["choice"]
         try:
