@@ -377,27 +377,19 @@ class MonitorApp(App):
     async def _poll_agents(self):
         """Fetch agent list and update the table."""
         if self.direct_agents:
-            # Direct mode — use provided agent list, discover names from /identity
             agents = []
             for da in self.direct_agents:
                 name = da.get("name", f"port-{da['port']}")
                 port = da["port"]
-                # Try to discover real name
-                try:
-                    client = FerriculaClient(f"http://localhost:{port}", name)
-                    identity = await client.identity()
-                    name = identity.get("name", name)
-                except Exception:
-                    pass
                 agents.append({"name": name, "port": port, "model": "?", "status": "running"})
         else:
-            agents = await self.supervisor.list_agents()
+            try:
+                agents = await self.supervisor.list_agents()
+            except Exception:
+                agents = []
 
         # Fetch details concurrently
-        tasks = [
-            fetch_detail(a["name"], a["port"])
-            for a in agents
-        ]
+        tasks = [fetch_detail(a["name"], a["port"]) for a in agents]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         self.details = {}
@@ -405,7 +397,8 @@ class MonitorApp(App):
             if isinstance(result, AgentDetail):
                 self.details[result.name] = result
 
-        self.call_from_thread(self._update_table, agents)
+        # Update table on the main thread
+        self._update_table(agents)
 
     def _update_table(self, agents: list[dict]):
         table = self.query_one("#agent-table", AgentTable)
