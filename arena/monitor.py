@@ -235,34 +235,62 @@ Screen {
     grid-size: 2 2;
     grid-columns: 2fr 1fr;
     grid-rows: 1fr auto;
+    background: #0c0a09;
 }
 
 #table-container {
     row-span: 1;
     column-span: 1;
     height: 100%;
-    border: solid $primary;
+    border: solid #b91c1c;
+    border-title-color: #b91c1c;
+    background: #1c1917;
 }
 
 AgentTable {
     height: 100%;
+    background: #1c1917;
+}
+
+AgentTable > .datatable--header {
+    background: #292524;
+    color: #b91c1c;
+    text-style: bold;
+}
+
+AgentTable > .datatable--cursor {
+    background: #44403c;
+    color: #fafaf9;
+}
+
+AgentTable > .datatable--even-row {
+    background: #1c1917;
+}
+
+AgentTable > .datatable--odd-row {
+    background: #0c0a09;
 }
 
 DetailPanel {
     row-span: 1;
     column-span: 1;
     height: 100%;
-    border: solid $secondary;
+    border: solid #78716c;
+    border-title-color: #b91c1c;
     padding: 1;
+    background: #1c1917;
+    color: #e7e5e4;
 }
 
 ChatPanel {
     row-span: 1;
     column-span: 2;
     height: auto;
-    max-height: 14;
-    border: solid $accent;
+    max-height: 16;
+    border: solid #059669;
+    border-title-color: #059669;
     display: none;
+    background: #0c0a09;
 }
 
 ChatPanel.visible {
@@ -270,16 +298,41 @@ ChatPanel.visible {
 }
 
 #chat-log {
-    height: 10;
+    height: 12;
+    background: #0c0a09;
+    color: #a8a29e;
 }
 
 #chat-input {
     dock: bottom;
+    background: #1c1917;
+    color: #e7e5e4;
+    border: tall #44403c;
+}
+
+#chat-input:focus {
+    border: tall #b91c1c;
 }
 
 #detail-header {
     text-style: bold;
+    color: #b91c1c;
     margin-bottom: 1;
+}
+
+Header {
+    background: #b91c1c;
+    color: #fafaf9;
+}
+
+Footer {
+    background: #292524;
+    color: #a8a29e;
+}
+
+Footer > .footer--key {
+    background: #44403c;
+    color: #b91c1c;
 }
 """
 
@@ -288,7 +341,8 @@ class MonitorApp(App):
     """Live dashboard for ferricula-arena agents."""
 
     CSS = MONITOR_CSS
-    TITLE = "ferricula-arena monitor"
+    TITLE = "FERRICULA ARENA"
+    SUB_TITLE = "thermodynamic memory monitor"
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("r", "refresh", "Refresh"),

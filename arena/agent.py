@@ -304,27 +304,66 @@ class Agent:
                 system += f"- {t}\n"
             system += "\nSpeak from these memories as lived experience. Never say 'I recall' or 'my memories show'. Just be yourself.\n"
 
-        # Call Claude
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                json={
+        # Call Claude with tool use support
+        from .tools import TOOL_DEFINITIONS, execute_tool
+
+        messages = [{"role": "user", "content": user_message}]
+        api_headers = {
+            "x-api-key": self._api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+
+        # Tool use loop — up to 3 rounds of tool calls
+        reply = ""
+        for _round in range(4):
+            async with httpx.AsyncClient() as client:
+                body = {
                     "model": self._model,
                     "max_tokens": 1024,
                     "system": system,
-                    "messages": [{"role": "user", "content": user_message}],
-                },
-                headers={
-                    "x-api-key": self._api_key,
-                    "anthropic-version": "2023-06-01",
-                    "Content-Type": "application/json",
-                },
-                timeout=60,
-            )
-            resp.raise_for_status()
-            data = resp.json()
+                    "messages": messages,
+                    "tools": TOOL_DEFINITIONS,
+                }
+                resp = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    json=body,
+                    headers=api_headers,
+                    timeout=90,
+                )
+                resp.raise_for_status()
+                data = resp.json()
 
-        reply = data["content"][0]["text"]
+            # Check if the model wants to use tools
+            if data.get("stop_reason") == "tool_use":
+                # Process tool calls
+                assistant_content = data["content"]
+                messages.append({"role": "assistant", "content": assistant_content})
+
+                tool_results = []
+                for block in assistant_content:
+                    if block.get("type") == "tool_use":
+                        tool_name = block["name"]
+                        tool_input = block["input"]
+                        result = execute_tool(tool_name, tool_input)
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block["id"],
+                            "content": result[:4000],  # cap tool output
+                        })
+
+                messages.append({"role": "user", "content": tool_results})
+                continue  # next round
+
+            # Extract text reply
+            for block in data.get("content", []):
+                if block.get("type") == "text":
+                    reply = block["text"]
+                    break
+            break
+
+        if not reply:
+            reply = "(no response)"
 
         # Remember the exchange
         exchange = f"User asked: {user_message[:100]} | I replied: {reply[:100]}"
