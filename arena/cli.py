@@ -308,7 +308,11 @@ def main():
                    help="Number of dream cycles (default: 3)")
 
     # monitor
-    sub.add_parser("monitor", help="Live TUI dashboard")
+    p = sub.add_parser("monitor", help="Live TUI dashboard")
+    p.add_argument("--port", "-p", type=int, action="append", default=[],
+                   help="Connect directly to ferricula on this port (repeatable)")
+    p.add_argument("--agent", "-a", action="append", default=[],
+                   help="Agent name for corresponding --port (optional)")
 
     args = parser.parse_args()
     if not args.command:
@@ -318,7 +322,13 @@ def main():
     # Monitor runs its own event loop (Textual), not asyncio.run
     if args.command == "monitor":
         from .monitor import run_monitor
-        run_monitor()
+        direct = None
+        if args.port:
+            direct = []
+            for i, port in enumerate(args.port):
+                name = args.agent[i] if i < len(args.agent) else f"port-{port}"
+                direct.append({"name": name, "port": port})
+        run_monitor(agents=direct)
         return
 
     dispatch = {

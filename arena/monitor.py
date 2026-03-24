@@ -298,9 +298,10 @@ class MonitorApp(App):
 
     selected_agent: reactive[Optional[str]] = reactive(None)
 
-    def __init__(self):
+    def __init__(self, direct_agents: list[dict] | None = None):
         super().__init__()
         self.supervisor = Supervisor()
+        self.direct_agents = direct_agents  # bypass supervisor
         self.details: dict[str, AgentDetail] = {}
         self._refresh_timer: Optional[Timer] = None
 
@@ -321,7 +322,22 @@ class MonitorApp(App):
     @work(exclusive=True)
     async def _poll_agents(self):
         """Fetch agent list and update the table."""
-        agents = await self.supervisor.list_agents()
+        if self.direct_agents:
+            # Direct mode — use provided agent list, discover names from /identity
+            agents = []
+            for da in self.direct_agents:
+                name = da.get("name", f"port-{da['port']}")
+                port = da["port"]
+                # Try to discover real name
+                try:
+                    client = FerriculaClient(f"http://localhost:{port}", name)
+                    identity = await client.identity()
+                    name = identity.get("name", name)
+                except Exception:
+                    pass
+                agents.append({"name": name, "port": port, "model": "?", "status": "running"})
+        else:
+            agents = await self.supervisor.list_agents()
 
         # Fetch details concurrently
         tasks = [
@@ -540,9 +556,14 @@ class MonitorApp(App):
             pass
 
 
-def run_monitor():
-    """Entry point for the monitor TUI."""
-    app = MonitorApp()
+def run_monitor(agents: list[dict] | None = None):
+    """Entry point for the monitor TUI.
+
+    Args:
+        agents: Optional list of {"name": ..., "port": ...} dicts for direct
+                connection mode (bypasses supervisor registry).
+    """
+    app = MonitorApp(direct_agents=agents)
     app.run()
 
 
