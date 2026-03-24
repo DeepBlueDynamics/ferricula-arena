@@ -239,9 +239,8 @@ async def cmd_chat(args):
         print("\n[bye]")
     finally:
         stop_event.set()
-        auto_task.cancel()
         try:
-            await auto_task
+            auto_task.cancel()
         except BaseException:
             pass
 
