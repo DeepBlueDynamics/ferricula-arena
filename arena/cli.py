@@ -190,8 +190,10 @@ async def cmd_chat(args):
             except KeyboardInterrupt:
                 input_q.put(_interrupt)
             except EOFError:
-                input_q.put(_quit)
-                return
+                # Only quit on real EOF, not transient errors
+                import time as _t
+                _t.sleep(0.1)
+                input_q.put(_interrupt)  # treat as ctrl-c, not quit
 
     t = threading.Thread(target=_input_thread, daemon=True)
     t.start()
@@ -265,7 +267,6 @@ async def cmd_chat(args):
             auto_task.cancel()
         except BaseException:
             pass
-    print("[bye]")
 
 
 async def cmd_list(args):
