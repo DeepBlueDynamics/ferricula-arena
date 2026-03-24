@@ -175,20 +175,31 @@ async def cmd_chat(args):
     # Async input helper — run input() in a thread so we don't block the event loop
     loop = asyncio.get_event_loop()
 
+    def _safe_input(prompt="you> "):
+        """Blocking input that handles ctrl-c gracefully."""
+        try:
+            return input(prompt).strip()
+        except (EOFError, KeyboardInterrupt):
+            return None  # signal: user hit ctrl-c
+
     try:
         while True:
             try:
-                user_input = await loop.run_in_executor(None, lambda: input("you> ").strip())
-            except (EOFError, KeyboardInterrupt):
+                user_input = await loop.run_in_executor(None, _safe_input)
+            except (asyncio.CancelledError, KeyboardInterrupt, EOFError):
+                user_input = None
+
+            if user_input is None:
+                # Ctrl-C — ask to quit
                 print()
                 try:
                     confirm = await loop.run_in_executor(
-                        None, lambda: input("  quit? (y/n) ").strip().lower()
+                        None, lambda: _safe_input("  quit? (y/n) ")
                     )
-                except (EOFError, KeyboardInterrupt):
+                except (asyncio.CancelledError, KeyboardInterrupt, EOFError):
                     print("\n[bye]")
                     break
-                if confirm in ("y", "yes", ""):
+                if confirm is None or confirm in ("y", "yes", ""):
                     print("[bye]")
                     break
                 continue
@@ -199,32 +210,40 @@ async def cmd_chat(args):
                 print("[bye]")
                 break
             if user_input.lower() == "status":
-                s = await agent.ferricula.status()
-                print(f"  active={s.active} keystones={s.keystones} "
-                      f"edges={s.graph_edges} dreams={agent.state.total_dreams}")
+                try:
+                    s = await agent.ferricula.status()
+                    print(f"  active={s.active} keystones={s.keystones} "
+                          f"edges={s.graph_edges} dreams={agent.state.total_dreams}")
+                except Exception as e:
+                    print(f"  [error] {e}")
                 continue
             if user_input.lower() == "dream":
-                report = await agent.offer()
-                arcs = ",".join(report.active_archetypes) or "none"
-                print(f"  ~dream~ decayed={report.decayed} "
-                      f"consolidated={report.consolidated} "
-                      f"archetypes=[{arcs}]")
+                try:
+                    report = await agent.offer()
+                    arcs = ",".join(report.active_archetypes) or "none"
+                    print(f"  ~dream~ decayed={report.decayed} "
+                          f"consolidated={report.consolidated} "
+                          f"archetypes=[{arcs}]")
+                except Exception as e:
+                    print(f"  [error] {e}")
                 continue
 
             try:
                 reply = await agent.chat(user_input)
                 print(f"\n{name}> {reply}\n")
-            except KeyboardInterrupt:
+            except (asyncio.CancelledError, KeyboardInterrupt):
                 print("\n  [interrupted — response cancelled]")
                 continue
             except Exception as e:
                 print(f"  [error] {e}")
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        print("\n[bye]")
     finally:
         stop_event.set()
         auto_task.cancel()
         try:
             await auto_task
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, KeyboardInterrupt):
             pass
 
 
@@ -389,7 +408,10 @@ def main():
         "dream": cmd_dream,
     }
 
-    asyncio.run(dispatch[args.command](args))
+    try:
+        asyncio.run(dispatch[args.command](args))
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        print("\n[bye]")
 
 
 if __name__ == "__main__":

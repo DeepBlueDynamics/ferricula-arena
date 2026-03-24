@@ -18,6 +18,7 @@ import os
 import random
 import sys
 import time
+from pathlib import Path
 from typing import Optional
 
 import httpx
@@ -196,17 +197,16 @@ async def _spontaneous_thought(
 async def _dream_reflection(
     ferricula, chonk, name, api_key, model, identity, callback,
 ):
-    """After a dream, reflect on what changed."""
+    """After a dream, reflect on what changed. Record dream to journal."""
     try:
-        # Get current status to see what the dream did
         status = await ferricula.status()
 
         system = (
             f"You are {name}'s post-dream awareness. A dream just completed. "
             f"You have {status.active} active memories, {status.keystones} keystones, "
             f"{status.graph_edges} edges. "
-            f"Share one brief observation about what you're noticing. "
-            f"One sentence. Like waking up and having a thought."
+            f"Describe what you saw in the dream — a brief vivid image or scene. "
+            f"Two sentences max. This is a dream, not analysis. Be visual."
         )
 
         async with httpx.AsyncClient() as client:
@@ -214,9 +214,9 @@ async def _dream_reflection(
                 "https://api.anthropic.com/v1/messages",
                 json={
                     "model": model,
-                    "max_tokens": 80,
+                    "max_tokens": 120,
                     "system": system,
-                    "messages": [{"role": "user", "content": "What did the dream leave you with?"}],
+                    "messages": [{"role": "user", "content": "What did you dream?"}],
                 },
                 headers={
                     "x-api-key": api_key,
@@ -228,8 +228,46 @@ async def _dream_reflection(
             resp.raise_for_status()
             data = resp.json()
 
-        thought = data["content"][0]["text"]
-        callback(f"\n  [{name} waking] {thought}\n")
+        dream_text = data["content"][0]["text"]
+        callback(f"\n  [{name} dreaming] {dream_text}\n")
+
+        # ── Record dream to journal file ──
+        dream_log = Path(os.environ.get("DREAM_LOG", "dreams.jsonl"))
+        entry = {
+            "agent": name,
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "type": "dream",
+            "description": dream_text,
+            "stats": {
+                "active": status.active,
+                "keystones": status.keystones,
+                "edges": status.graph_edges,
+            },
+        }
+        with open(dream_log, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        # ── Remember the dream as a dream-sourced memory ──
+        # Tagged so it's never confused with lived experience
+        if chonk and random.random() < 0.7:  # 70% chance of remembering
+            try:
+                vec = await chonk.embed(f"dream: {dream_text[:200]}")
+                dream_mid = int(time.time() * 1000) % (2**31)
+                row = {
+                    "id": dream_mid,
+                    "tags": {
+                        "channel": "thinking",
+                        "type": "dream",
+                        "text": f"[dream] {dream_text[:200]}",
+                    },
+                    "vector": [float(v) for v in vec],
+                    "decay_alpha": 0.018,  # dreams decay fast unless reinforced
+                    "importance": 0.2,
+                }
+                import json as _json
+                await ferricula._post("remember", _json.dumps(row))
+            except Exception:
+                pass
 
     except Exception:
         pass
