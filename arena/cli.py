@@ -172,42 +172,58 @@ async def cmd_chat(args):
         )
     )
 
-    # Block SIGINT entirely — ctrl-c goes through the input handler, not the signal
-    import signal
-    _old_sigint = signal.getsignal(signal.SIGINT)
-    signal.signal(signal.SIGINT, signal.SIG_IGN)  # IGNORE ctrl-c at signal level
+    # Input runs in a thread, chat stays async.
+    # Ctrl-c: thread catches KeyboardInterrupt, puts sentinel on queue.
+    import queue
+    import threading
 
-    loop = asyncio.get_event_loop()
+    input_q = queue.Queue()
+    _quit = object()
+    _interrupt = object()
 
-    def _safe_input(prompt="you> "):
-        """Blocking input. Ctrl-c is blocked at signal level so this just works."""
-        # Temporarily restore handler so ctrl-c can interrupt input()
-        signal.signal(signal.SIGINT, _old_sigint)
-        try:
-            result = input(prompt).strip()
-            signal.signal(signal.SIGINT, signal.SIG_IGN)  # re-block
-            return result
-        except (EOFError, KeyboardInterrupt):
-            signal.signal(signal.SIGINT, signal.SIG_IGN)  # re-block
-            return None
+    def _input_thread():
+        """Dedicated thread for blocking input. Never touches asyncio."""
+        while True:
+            try:
+                line = input("you> ").strip()
+                input_q.put(line)
+            except KeyboardInterrupt:
+                input_q.put(_interrupt)
+            except EOFError:
+                input_q.put(_quit)
+                return
+
+    t = threading.Thread(target=_input_thread, daemon=True)
+    t.start()
 
     try:
         while True:
-            try:
-                user_input = await loop.run_in_executor(None, _safe_input)
-            except BaseException:
-                user_input = None
-
-            if user_input is None:
-                print()
+            # Poll the queue so autonomous loop can run between checks
+            user_input = None
+            while user_input is None:
                 try:
-                    confirm = await loop.run_in_executor(
-                        None, lambda: _safe_input("  quit? (y/n) ")
-                    )
-                except BaseException:
+                    user_input = input_q.get(timeout=0.2)
+                except queue.Empty:
+                    # Let asyncio tasks run (autonomous thinking)
+                    await asyncio.sleep(0)
+                    continue
+
+            if user_input is _quit:
+                print("[bye]")
+                break
+
+            if user_input is _interrupt:
+                # Ctrl-c hit — ask to quit
+                print()
+                print("  quit? (y/n) ", end="", flush=True)
+                try:
+                    confirm = input_q.get(timeout=10)
+                except queue.Empty:
+                    confirm = "y"
+                if confirm is _interrupt or confirm is _quit:
                     print("[bye]")
                     break
-                if confirm is None or confirm in ("y", "yes", ""):
+                if isinstance(confirm, str) and confirm.lower() in ("y", "yes", ""):
                     print("[bye]")
                     break
                 continue
@@ -239,29 +255,17 @@ async def cmd_chat(args):
             try:
                 reply = await agent.chat(user_input)
                 print(f"\n{name}> {reply}\n")
-            except BaseException as e:
-                if isinstance(e, (KeyboardInterrupt, asyncio.CancelledError)):
-                    print("\n  [interrupted]")
-                    continue
+            except Exception as e:
                 print(f"  [error] {e}")
     except BaseException:
-        print("\n[bye]")
+        pass
     finally:
-        # Suppress all cleanup noise
-        import warnings
-        warnings.filterwarnings("ignore")
-        import logging
-        logging.disable(logging.CRITICAL)
         stop_event.set()
         try:
             auto_task.cancel()
         except BaseException:
             pass
-        # Restore signal handler
-        try:
-            signal.signal(signal.SIGINT, _old_sigint)
-        except BaseException:
-            pass
+    print("[bye]")
 
 
 async def cmd_list(args):
