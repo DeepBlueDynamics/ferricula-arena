@@ -147,49 +147,85 @@ async def cmd_chat(args):
         print(f"  Hexagram #{hex_num} {hex_name} | {zodiac} | {primary_emo}/{secondary_emo}")
     print(f"  {status.active} active memories, {status.keystones} keystones, {status.graph_edges} edges")
     print(f"  model: {agent._model}")
+    print(f"  autonomous thinking: on")
     print(f"  type 'quit' to exit, 'status' for stats, 'dream' to trigger dream\n")
 
-    while True:
-        try:
-            user_input = input(f"you> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
+    # Start autonomous thinking loop in background
+    from .autonomous import autonomous_loop
+    stop_event = asyncio.Event()
+
+    def interrupt_print(text):
+        """Print agent's spontaneous thought to terminal."""
+        sys.stdout.write(text)
+        sys.stdout.flush()
+
+    auto_task = asyncio.create_task(
+        autonomous_loop(
+            ferricula=agent.ferricula,
+            chonk=agent.chonk,
+            name=name,
+            api_key=agent._api_key,
+            model=agent._model,
+            identity=identity,
+            interrupt_callback=interrupt_print,
+            stop_event=stop_event,
+        )
+    )
+
+    # Async input helper — run input() in a thread so we don't block the event loop
+    loop = asyncio.get_event_loop()
+
+    try:
+        while True:
             try:
-                confirm = input("  quit? (y/n) ").strip().lower()
+                user_input = await loop.run_in_executor(None, lambda: input("you> ").strip())
             except (EOFError, KeyboardInterrupt):
-                print("\n[bye]")
-                break
-            if confirm in ("y", "yes", ""):
+                print()
+                try:
+                    confirm = await loop.run_in_executor(
+                        None, lambda: input("  quit? (y/n) ").strip().lower()
+                    )
+                except (EOFError, KeyboardInterrupt):
+                    print("\n[bye]")
+                    break
+                if confirm in ("y", "yes", ""):
+                    print("[bye]")
+                    break
+                continue
+
+            if not user_input:
+                continue
+            if user_input.lower() == "quit":
                 print("[bye]")
                 break
-            continue
+            if user_input.lower() == "status":
+                s = await agent.ferricula.status()
+                print(f"  active={s.active} keystones={s.keystones} "
+                      f"edges={s.graph_edges} dreams={agent.state.total_dreams}")
+                continue
+            if user_input.lower() == "dream":
+                report = await agent.offer()
+                arcs = ",".join(report.active_archetypes) or "none"
+                print(f"  ~dream~ decayed={report.decayed} "
+                      f"consolidated={report.consolidated} "
+                      f"archetypes=[{arcs}]")
+                continue
 
-        if not user_input:
-            continue
-        if user_input.lower() == "quit":
-            print("[bye]")
-            break
-        if user_input.lower() == "status":
-            s = await agent.ferricula.status()
-            print(f"  active={s.active} keystones={s.keystones} "
-                  f"edges={s.graph_edges} dreams={agent.state.total_dreams}")
-            continue
-        if user_input.lower() == "dream":
-            report = await agent.offer()
-            arcs = ",".join(report.active_archetypes) or "none"
-            print(f"  ~dream~ decayed={report.decayed} "
-                  f"consolidated={report.consolidated} "
-                  f"archetypes=[{arcs}]")
-            continue
-
+            try:
+                reply = await agent.chat(user_input)
+                print(f"\n{name}> {reply}\n")
+            except KeyboardInterrupt:
+                print("\n  [interrupted — response cancelled]")
+                continue
+            except Exception as e:
+                print(f"  [error] {e}")
+    finally:
+        stop_event.set()
+        auto_task.cancel()
         try:
-            reply = await agent.chat(user_input)
-            print(f"\n{name}> {reply}\n")
-        except KeyboardInterrupt:
-            print("\n  [interrupted — response cancelled]")
-            continue
-        except Exception as e:
-            print(f"  [error] {e}")
+            await auto_task
+        except asyncio.CancelledError:
+            pass
 
 
 async def cmd_list(args):
