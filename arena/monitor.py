@@ -354,8 +354,8 @@ class MonitorApp(App):
 
     def __init__(self, direct_agents: list[dict] | None = None):
         super().__init__()
-        self.supervisor = Supervisor()
-        self.direct_agents = direct_agents  # bypass supervisor
+        self.supervisor = None if direct_agents else Supervisor()
+        self.direct_agents = direct_agents
         self.details: dict[str, AgentDetail] = {}
         self._refresh_timer: Optional[Timer] = None
 
@@ -382,6 +382,7 @@ class MonitorApp(App):
     def _do_poll(self):
         """Fetch agent data in a thread, then update UI."""
         import asyncio as _aio
+        import sys
 
         async def _fetch():
             if self.direct_agents:
@@ -390,11 +391,13 @@ class MonitorApp(App):
                     name = da.get("name", f"port-{da['port']}")
                     port = da["port"]
                     agents.append({"name": name, "port": port, "model": "?", "status": "running"})
-            else:
+            elif self.supervisor:
                 try:
                     agents = await self.supervisor.list_agents()
                 except Exception:
                     agents = []
+            else:
+                agents = []
 
             tasks = [fetch_detail(a["name"], a["port"]) for a in agents]
             results = await _aio.gather(*tasks, return_exceptions=True)
@@ -406,14 +409,14 @@ class MonitorApp(App):
 
             return agents, details
 
-        loop = _aio.new_event_loop()
         try:
+            loop = _aio.new_event_loop()
             agents, details = loop.run_until_complete(_fetch())
-        finally:
             loop.close()
-
-        self.details = details
-        self.app.call_from_thread(self._update_table, agents)
+            self.details = details
+            self.app.call_from_thread(self._update_table, agents)
+        except Exception as e:
+            print(f"[monitor poll error] {e}", file=sys.stderr)
 
     def _update_table(self, agents: list[dict]):
         table = self.query_one("#agent-table", AgentTable)
