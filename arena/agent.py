@@ -378,6 +378,51 @@ class Agent:
         if not reply:
             reply = "(no response)"
 
+        # ── Inner voice: /confer evaluation ──
+        # Ask the archetypes to evaluate the response before sending
+        try:
+            confer_body = json.dumps({"text": reply, "context": user_message[:200]})
+            confer_resp = await self.ferricula._post("confer", confer_body)
+            confer_data = json.loads(confer_resp)
+            confer_score = confer_data.get("score", 1.0)
+            confer_guidance = confer_data.get("guidance", "")
+            confer_flags = confer_data.get("flags", [])
+
+            # If score is below threshold, regenerate with archetype feedback
+            if confer_score < 0.5 and _round < 3:
+                # Inject archetype feedback and regenerate
+                feedback = (
+                    f"\n\n[INNER VOICE — your archetypes are pushing back]\n"
+                    f"Score: {confer_score:.2f}\n"
+                    f"Guidance: {confer_guidance}\n"
+                    f"Fix these issues and respond again. More declarations, fewer questions. "
+                    f"Be yourself.\n"
+                )
+                messages.append({"role": "assistant", "content": reply})
+                messages.append({"role": "user", "content": feedback})
+                # One more LLM call with feedback
+                async with httpx.AsyncClient() as client:
+                    body = {
+                        "model": self._model,
+                        "max_tokens": 1024,
+                        "system": system,
+                        "messages": messages,
+                    }
+                    resp = await client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        json=body,
+                        headers=api_headers,
+                        timeout=90,
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                for block in data.get("content", []):
+                    if block.get("type") == "text":
+                        reply = block["text"]
+                        break
+        except Exception:
+            pass  # inner voice failure shouldn't block the response
+
         # Remember the exchange
         exchange = f"User asked: {user_message[:100]} | I replied: {reply[:100]}"
         await self.remember(exchange, channel="thinking")
