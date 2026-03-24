@@ -172,15 +172,24 @@ async def cmd_chat(args):
         )
     )
 
-    # Async input helper — run input() in a thread so we don't block the event loop
+    # Block SIGINT entirely — ctrl-c goes through the input handler, not the signal
+    import signal
+    _old_sigint = signal.getsignal(signal.SIGINT)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)  # IGNORE ctrl-c at signal level
+
     loop = asyncio.get_event_loop()
 
     def _safe_input(prompt="you> "):
-        """Blocking input that handles ctrl-c gracefully."""
+        """Blocking input. Ctrl-c is blocked at signal level so this just works."""
+        # Temporarily restore handler so ctrl-c can interrupt input()
+        signal.signal(signal.SIGINT, _old_sigint)
         try:
-            return input(prompt).strip()
+            result = input(prompt).strip()
+            signal.signal(signal.SIGINT, signal.SIG_IGN)  # re-block
+            return result
         except (EOFError, KeyboardInterrupt):
-            return None  # signal: user hit ctrl-c
+            signal.signal(signal.SIGINT, signal.SIG_IGN)  # re-block
+            return None
 
     try:
         while True:
@@ -238,9 +247,19 @@ async def cmd_chat(args):
     except BaseException:
         print("\n[bye]")
     finally:
+        # Suppress all cleanup noise
+        import warnings
+        warnings.filterwarnings("ignore")
+        import logging
+        logging.disable(logging.CRITICAL)
         stop_event.set()
         try:
             auto_task.cancel()
+        except BaseException:
+            pass
+        # Restore signal handler
+        try:
+            signal.signal(signal.SIGINT, _old_sigint)
         except BaseException:
             pass
 
@@ -419,6 +438,8 @@ def main():
                 loop.add_signal_handler(signal.SIGINT, lambda: None)
         except NotImplementedError:
             pass  # Windows doesn't support add_signal_handler
+        # Suppress "Task was destroyed" warnings
+        loop.set_exception_handler(lambda l, c: None)
         try:
             loop.run_until_complete(dispatch["chat"](args))
         except BaseException:
