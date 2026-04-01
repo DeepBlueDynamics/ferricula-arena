@@ -150,7 +150,7 @@ async def train(agent: Agent, dataset_dir: str | Path, *,
 
         # Chunk via shivvr
         try:
-            chunks = await agent.chonk.chunk_and_embed(text)
+            chunks = await agent.shivvr.chunk_and_embed(text)
         except httpx.TimeoutException:
             if progress:
                 print(f" ERROR: shivvr timeout (text too large: {len(text)} chars)")

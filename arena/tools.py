@@ -218,13 +218,13 @@ TOOL_DEFINITIONS = [
     # ── Hyperia tools — the agent can see and act in the terminal world ──
     {
         "name": "terminal_screen",
-        "description": "Read what's currently visible on a terminal pane. Use this to see what's happening in other windows — other agents talking, code running, logs scrolling.",
+        "description": "[Hyperia] Read what's currently visible on a terminal pane. Hyperia is your terminal — the window into the real world. Use this to see what's happening in other windows — other agents talking, code running, logs scrolling.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "pane": {
                     "type": "integer",
-                    "description": "Pane index to read (0 = first pane)",
+                    "description": "Pane index (use terminal_status to find by tab name first)",
                     "default": 0,
                 },
             },
@@ -232,7 +232,7 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "terminal_run",
-        "description": "Run a shell command in a terminal pane. The command executes and you get back what appeared on screen.",
+        "description": "[Hyperia] Run a shell command in a Hyperia terminal pane. The command executes and you get back what appeared on screen.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -251,7 +251,7 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "terminal_type",
-        "description": "Type keystrokes into a terminal pane. Use \\n for Enter. You can talk to other agents this way — type into their chat pane.",
+        "description": "[Hyperia] Type keystrokes into a Hyperia terminal pane. Use \\n for Enter. You can talk to other agents this way — type into their chat pane.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -270,7 +270,7 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "terminal_status",
-        "description": "List all open terminal panes with their IDs, names, and dimensions. Use this to find out what's running where.",
+        "description": "[Hyperia] List all open Hyperia terminal panes with their IDs, tab names, and dimensions. Use this to find out what's running where. Always refer to panes by their tabName, not their index number — names are how humans think about windows.",
         "input_schema": {
             "type": "object",
             "properties": {},
@@ -278,7 +278,7 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "terminal_new_tab",
-        "description": "Open a new terminal tab, optionally running a startup command in it.",
+        "description": "[Hyperia] Open a new Hyperia terminal tab, optionally running a startup command in it.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -339,7 +339,7 @@ TOOL_DEFINITIONS = [
 # ── Runtime endpoints for introspection tools ──
 _ferricula_url: str = ""
 _radio_url: str = ""
-_chonk_url: str = ""
+_shivvr_url: str = ""
 _hyperia_url: str = ""
 
 
@@ -353,9 +353,9 @@ def set_radio_url(url: str):
     _radio_url = url
 
 
-def set_chonk_url(url: str):
-    global _chonk_url
-    _chonk_url = url
+def set_shivvr_url(url: str):
+    global _shivvr_url
+    _shivvr_url = url
 
 
 _agent_name: str = ""
@@ -530,9 +530,9 @@ def execute_tool(name: str, input_data: dict) -> str:
     elif name == "remember_thought":
         thought = input_data["thought"]
         try:
-            # Embed via chonk then store
-            if _chonk_url:
-                embed_url = f"{_chonk_url}/memory/_mcp/ingest"
+            # Embed via shivvr then store
+            if _shivvr_url:
+                embed_url = f"{_shivvr_url}/memory/_mcp/ingest"
                 req = urllib.request.Request(
                     embed_url,
                     data=json.dumps({"text": thought}).encode(),
@@ -604,9 +604,9 @@ def execute_tool(name: str, input_data: dict) -> str:
 
             # Embed the choice
             vector = [0.0] * 768
-            if _chonk_url:
+            if _shivvr_url:
                 try:
-                    embed_url = f"{_chonk_url}/memory/_mcp/ingest"
+                    embed_url = f"{_shivvr_url}/memory/_mcp/ingest"
                     req = urllib.request.Request(
                         embed_url,
                         data=json.dumps({"text": f"I chose: {choice}"}).encode(),

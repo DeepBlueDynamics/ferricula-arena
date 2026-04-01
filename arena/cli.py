@@ -92,15 +92,15 @@ async def cmd_chat(args):
     """Interactive chat with an agent."""
     import os
     from .agent import Agent
-    from .clients import ChonkClient, FerriculaClient
+    from .clients import ShivvrClient, FerriculaClient
     from .config import AgentConfig, PersonalityConfig, MemoryConfig
 
     if args.port:
         # Direct connection mode — no supervisor needed
         url = f"http://localhost:{args.port}"
-        chonk_url = args.chonk or os.environ.get("CHONK_URL", "http://nemesis:8080")
+        shivvr_url = args.shivvr or os.environ.get("SHIVVR_URL", "http://nemesis:8080")
         ferricula = FerriculaClient(url, args.agent or "agent")
-        chonk = ChonkClient(chonk_url)
+        shivvr = ShivvrClient(shivvr_url)
 
         if not await ferricula.available():
             print(f"[error] ferricula not reachable at {url}")
@@ -124,11 +124,11 @@ async def cmd_chat(args):
                 voice="Speak as the character naturally would",
                 focus=[],
             ),
-            memory=MemoryConfig(chonk_url=chonk_url),
+            memory=MemoryConfig(shivvr_url=shivvr_url),
         )
         agent = Agent(config, port=args.port, name=name)
         agent.ferricula = ferricula
-        agent.chonk = chonk
+        agent.shivvr = shivvr
         agent.state.identity = identity
     else:
         sup = _get_supervisor()
@@ -162,7 +162,7 @@ async def cmd_chat(args):
     auto_task = asyncio.create_task(
         autonomous_loop(
             ferricula=agent.ferricula,
-            chonk=agent.chonk,
+            shivvr=agent.shivvr,
             name=name,
             api_key=agent._api_key,
             model=agent._model,
@@ -374,7 +374,7 @@ def main():
     p.add_argument("--agent", "-a", help="Agent name (required unless --port)")
     p.add_argument("--port", "-p", type=int, default=0,
                    help="Connect directly to ferricula on this port")
-    p.add_argument("--chonk", help="Chonk/shivvr URL (default: CHONK_URL env or nemesis:8080)")
+    p.add_argument("--shivvr", help="Shivvr URL (default: SHIVVR_URL env or nemesis:8080)")
     p.add_argument("--model", "-m", help="LLM model (default: claude-sonnet-4-6)")
     p.add_argument("--role", help="Override agent role/system prompt")
 

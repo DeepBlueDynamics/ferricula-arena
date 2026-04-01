@@ -26,7 +26,7 @@ class PersonalityConfig:
 @dataclass
 class MemoryConfig:
     port: Optional[int] = None
-    chonk_url: str = "http://nemesis:8080"
+    shivvr_url: str = "http://nemesis:8080"
     radio_url: str = "http://nemesis:9090"
     clock_tick_secs: int = 43200
     dream_threshold_bytes: int = 16
@@ -104,7 +104,7 @@ def load_config(path: str | Path) -> AgentConfig:
         m = raw["memory"]
         config.memory = MemoryConfig(
             port=m.get("port"),
-            chonk_url=m.get("chonk_url", "http://nemesis:8080"),
+            shivvr_url=m.get("shivvr_url", "http://nemesis:8080"),
             radio_url=m.get("radio_url", "http://nemesis:9090"),
             clock_tick_secs=m.get("clock_tick_secs", 43200),
             dream_threshold_bytes=m.get("dream_threshold_bytes", 16),

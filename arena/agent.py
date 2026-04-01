@@ -19,7 +19,7 @@ from typing import Optional
 
 import httpx
 
-from .clients import ChonkClient, FerriculaClient, DreamReport, StatusResult
+from .clients import ShivvrClient, FerriculaClient, DreamReport, StatusResult
 from .config import AgentConfig, load_config
 
 FERRICULA_IMAGE = "kord/ferricula:latest"
@@ -49,7 +49,7 @@ class Agent:
 
         # Clients — initialized when container starts
         self.ferricula: Optional[FerriculaClient] = None
-        self.chonk = ChonkClient(config.memory.chonk_url)
+        self.shivvr = ShivvrClient(config.memory.shivvr_url)
 
         # LLM
         self._api_key = os.environ.get("AGENT_KEY", "")
@@ -86,7 +86,7 @@ class Agent:
 
         env_vars = {
             "PORT": str(self.port),
-            "CHONK_URL": self.config.memory.chonk_url,
+            "SHIVVR_URL": self.config.memory.shivvr_url,
             "RADIO_URL": self.config.memory.radio_url,
             "CLOCK_TICK_SECS": str(self.config.memory.clock_tick_secs),
             "DREAM_THRESHOLD_BYTES": str(self.config.memory.dream_threshold_bytes),
@@ -107,9 +107,9 @@ class Agent:
         else:
             cmd.extend(["-p", f"{self.port}:{self.port}"])
             # Rewrite localhost URLs to host.docker.internal for bridge networking
-            if "localhost" in env_vars["CHONK_URL"]:
-                chonk_bridge = env_vars["CHONK_URL"].replace("localhost", "host.docker.internal")
-                cmd.extend(["-e", f"CHONK_URL={chonk_bridge}"])
+            if "localhost" in env_vars["SHIVVR_URL"]:
+                shivvr_bridge = env_vars["SHIVVR_URL"].replace("localhost", "host.docker.internal")
+                cmd.extend(["-e", f"SHIVVR_URL={shivvr_bridge}"])
             if "localhost" in env_vars["RADIO_URL"]:
                 radio_bridge = env_vars["RADIO_URL"].replace("localhost", "host.docker.internal")
                 cmd.extend(["-e", f"RADIO_URL={radio_bridge}"])
@@ -199,7 +199,7 @@ class Agent:
                        importance: float = 0.0) -> int:
         """Embed text via shivvr and store in ferricula."""
         self._require_running()
-        vector = await self.chonk.embed(text)
+        vector = await self.shivvr.embed(text)
         alpha = (self.config.training.decay_alpha_keystone if keystone
                  else self.config.training.decay_alpha_normal)
         mid = await self.ferricula.remember(
@@ -215,7 +215,7 @@ class Agent:
     async def recall(self, query: str, k: int = 5) -> list[dict]:
         """Recall memories by semantic similarity. Returns text + metadata."""
         self._require_running()
-        hits = await self.ferricula.recall_text(query, self.chonk, k=k)
+        hits = await self.ferricula.recall_text(query, self.shivvr, k=k)
         results = []
         for hit in hits:
             row = await self.ferricula.get_row(hit.id)
@@ -226,6 +226,24 @@ class Agent:
                 "text": row.get("tags", {}).get("text", ""),
             })
         return results
+
+    async def see(self, description: str, keystone: bool = False) -> int:
+        """Perceive the environment through the eye sense base.
+
+        The caller describes what the agent sees: "you are in the office
+        kitchen next to the water cooler" or "a terminal showing migration
+        at 63% progress." Stored as a seeing-channel memory.
+        """
+        self._require_running()
+        vec = await self.shivvr.embed(description[:200])
+        mid = await self.ferricula.remember(
+            f"[eye] {description[:200]}",
+            vec,
+            channel="seeing",
+            decay_alpha=0.010,
+            keystone=keystone,
+        )
+        return mid
 
     async def dream(self) -> DreamReport:
         """Trigger a manual dream cycle."""
@@ -322,12 +340,12 @@ class Agent:
             system += "\nSpeak from these memories as lived experience. Never say 'I recall' or 'my memories show'. Just be yourself.\n"
 
         # Call Claude with tool use support
-        from .tools import TOOL_DEFINITIONS, execute_tool, set_ferricula_url, set_radio_url, set_chonk_url, set_agent_world
+        from .tools import TOOL_DEFINITIONS, execute_tool, set_ferricula_url, set_radio_url, set_shivvr_url, set_agent_world
 
         # Wire introspection tools to this agent's endpoints
         if self.ferricula:
             set_ferricula_url(self.ferricula.base_url)
-        set_chonk_url(self.chonk.base_url if self.chonk else "")
+        set_shivvr_url(self.shivvr.base_url if self.shivvr else "")
         radio_url = os.environ.get("RADIO_URL", "")
         if not radio_url:
             # Try to read from config
@@ -376,7 +394,9 @@ class Agent:
                     if block.get("type") == "tool_use":
                         tool_name = block["name"]
                         tool_input = block["input"]
+                        print(f"  [tool] {tool_name}({tool_input})")
                         result = execute_tool(tool_name, tool_input)
+                        print(f"  [tool] -> {result[:200]}")
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": block["id"],
@@ -394,6 +414,10 @@ class Agent:
             break
 
         if not reply:
+            # Debug: show what the API actually returned
+            stop = data.get("stop_reason", "?")
+            content_types = [b.get("type") for b in data.get("content", [])]
+            print(f"  [debug] no text — stop_reason={stop}, content_types={content_types}")
             reply = "(no response)"
 
         # ── Inner voice: /confer evaluation ──

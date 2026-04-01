@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Optional
 
 from .agent import Agent
-from .clients import FerriculaClient, ChonkClient, StatusResult
+from .clients import FerriculaClient, ShivvrClient, StatusResult
 from .config import AgentConfig, load_config
 
 REGISTRY_DIR = Path.home() / ".arena"

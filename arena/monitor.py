@@ -33,7 +33,7 @@ from textual.widgets import (
 )
 
 from .clients import (
-    ChonkClient,
+    ShivvrClient,
     DreamReport,
     FerriculaClient,
     InspectResult,
@@ -566,15 +566,15 @@ class MonitorApp(App):
 
         # Recall memories for context
         client = FerriculaClient(f"http://localhost:{port}", name)
-        chonk_url = "http://nemesis:8080"  # default shivvr endpoint
+        shivvr_url = "http://nemesis:8080"  # default shivvr endpoint
 
         # Look up shivvr URL from supervisor registry
         reg = self.supervisor._registry.get(name, {})
         # For now use default shivvr
 
-        chonk = ChonkClient(chonk_url)
+        shivvr = ShivvrClient(shivvr_url)
         try:
-            hits = await client.recall_text(message, chonk, k=5)
+            hits = await client.recall_text(message, shivvr, k=5)
             recalled = []
             for hit in hits:
                 row = await client.get_row(hit.id)
@@ -626,7 +626,7 @@ class MonitorApp(App):
         # Remember the exchange
         try:
             exchange = f"User: {message[:80]} | Reply: {reply[:80]}"
-            vec = await chonk.embed(exchange)
+            vec = await shivvr.embed(exchange)
             await client.remember(exchange, vec, channel="thinking")
         except Exception:
             pass

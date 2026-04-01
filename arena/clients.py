@@ -176,9 +176,9 @@ def parse_remember_id(text: str) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
-# ── ChonkClient ─────────────────────────────────────────────────────────
+# ── ShivvrClient ────────────────────────────────────────────────────────
 
-class ChonkClient:
+class ShivvrClient:
     """Async HTTP client for shivvr embedding service."""
 
     def __init__(self, base_url: str = "http://localhost:8080"):
@@ -300,10 +300,10 @@ class FerriculaClient:
         resp = await self._post("recall", json.dumps({"query": sql}))
         return parse_recall(resp)
 
-    async def recall_text(self, text: str, chonk: ChonkClient,
+    async def recall_text(self, text: str, shivvr: ShivvrClient,
                           k: int = 5) -> list[RecallHit]:
         """Embed text via shivvr, then recall by vector similarity."""
-        vector = await chonk.embed(text)
+        vector = await shivvr.embed(text)
         return await self.recall_vector(vector, k)
 
     async def dream(self) -> DreamReport:

@@ -23,7 +23,7 @@ from typing import Optional
 
 import httpx
 
-from .clients import FerriculaClient, ChonkClient, parse_status
+from .clients import FerriculaClient, ShivvrClient, parse_status
 from .tools import web_search, fetch_page
 
 
@@ -37,7 +37,7 @@ ENTROPY_SEARCH_THRESHOLD = 16  # bytes in reservoir to trigger curiosity search
 
 async def autonomous_loop(
     ferricula: FerriculaClient,
-    chonk: ChonkClient,
+    shivvr: ShivvrClient,
     name: str,
     api_key: str,
     model: str,
@@ -49,7 +49,7 @@ async def autonomous_loop(
 
     Args:
         ferricula: Client to the ferricula instance
-        chonk: Client to shivvr for embedding
+        shivvr: Client to shivvr for embedding
         name: Agent name
         api_key: Anthropic API key for LLM calls
         model: LLM model name
@@ -95,9 +95,13 @@ async def autonomous_loop(
             interrupt_callback(
                 f"\n  [{name} stirs — dream #{current_dreams} just passed]\n"
             )
+            # Body sense — interoception after dream
+            await _body_sense(ferricula, shivvr)
+            # Smell sense — ambient pattern detection from SKG
+            await _smell_sense(ferricula, shivvr)
             if random.random() < 0.6:
                 await _dream_reflection(
-                    ferricula, chonk, name, api_key, model,
+                    ferricula, shivvr, name, api_key, model,
                     identity, interrupt_callback,
                 )
         last_dream_count = current_dreams
@@ -113,14 +117,14 @@ async def autonomous_loop(
             if reservoir >= ENTROPY_SEARCH_THRESHOLD and api_key:
                 # High entropy — curiosity peaks, go search
                 await _curiosity_search(
-                    ferricula, chonk, name, api_key, model,
+                    ferricula, shivvr, name, api_key, model,
                     identity, interrupt_callback,
                 )
                 thought_count += 1
             elif reservoir >= ENTROPY_THINK_THRESHOLD:
                 # Moderate entropy — a thought surfaces
                 await _spontaneous_thought(
-                    ferricula, chonk, name, api_key, model,
+                    ferricula, shivvr, name, api_key, model,
                     identity, interrupt_callback,
                 )
                 thought_count += 1
@@ -128,7 +132,7 @@ async def autonomous_loop(
 
 
 async def _spontaneous_thought(
-    ferricula, chonk, name, api_key, model, identity, callback,
+    ferricula, shivvr, name, api_key, model, identity, callback,
 ):
     """Recall a random memory and let the agent react to it."""
     try:
@@ -179,7 +183,7 @@ async def _spontaneous_thought(
 
         # Remember the thought
         try:
-            vec = await chonk.embed(thought[:200])
+            vec = await shivvr.embed(thought[:200])
             await ferricula.remember(
                 f"inner thought: {thought[:200]}",
                 vec, channel="thinking",
@@ -193,49 +197,79 @@ async def _spontaneous_thought(
 
 
 async def _dream_reflection(
-    ferricula, chonk, name, api_key, model, identity, callback,
+    ferricula, shivvr, name, api_key, model, identity, callback,
 ):
-    """After a dream, reflect on what actually changed in memory."""
+    """Synesthetic dream — all six senses feed the vision."""
     try:
-        # Fetch the latest dream report — has IDs of affected memories
         report = await ferricula.dream_latest()
 
-        # Gather text from memories that shifted during this dream
+        # ── Gather from all senses ──
+
+        # Hearing + seeing + thinking: memories that shifted
         changed_ids = []
         if report.decayed_ids:
-            changed_ids.extend(report.decayed_ids[:10])
+            changed_ids.extend(report.decayed_ids[:8])
         if report.consolidated_ids:
-            changed_ids.extend(report.consolidated_ids[:5])
+            changed_ids.extend(report.consolidated_ids[:4])
         if report.forgiven_ids:
-            changed_ids.extend(report.forgiven_ids[:5])
+            changed_ids.extend(report.forgiven_ids[:4])
 
-        memory_texts = []
-        for mid in changed_ids[:15]:  # cap fetches
+        memory_fragments = []
+        for mid in changed_ids[:12]:
             try:
                 row = await ferricula.get_row(mid)
                 text = row.get("tags", {}).get("text", "")
+                channel = row.get("tags", {}).get("channel", "")
                 if text and len(text) >= 5:
-                    memory_texts.append(text[:120])
+                    memory_fragments.append((channel, text[:100]))
             except Exception:
                 continue
 
-        if not memory_texts:
+        if not memory_fragments:
             return
 
-        # Build prompt from actual memory content — no identity labels
-        memories_block = "\n".join(f"- {t}" for t in memory_texts[:8])
-        skg_line = ""
+        # Smell: ambient emerging patterns
+        smell_line = ""
         if report.skg_emerging:
-            pairs = ", ".join(report.skg_emerging[:3])
-            skg_line = f"\nNew connections forming between: {pairs}"
+            pairs = [p.replace("~", " and ") for p in report.skg_emerging[:3]]
+            smell_line = "A faint scent of connection between: " + ", ".join(pairs)
 
-        system = (
-            "These memories shifted during sleep:\n"
-            f"{memories_block}"
-            f"{skg_line}\n\n"
-            "Describe the dream as a visual scene. Two sentences."
+        # Body: agent state
+        body_line = ""
+        try:
+            status = await ferricula.status()
+            ks_pct = (status.keystones / max(status.active, 1)) * 100
+            if ks_pct > 80:
+                body_line = "The body feels dense, anchored, heavy with permanence."
+            elif ks_pct > 50:
+                body_line = "The body feels balanced, half-solid, half-fluid."
+            else:
+                body_line = "The body feels light, transient, mostly passing through."
+        except Exception:
+            pass
+
+        # Build the sensory dream prompt — NO stats, NO node counts, NO graph jargon
+        sense_lines = []
+        for channel, text in memory_fragments[:6]:
+            sense_lines.append(f"- {text}")
+
+        prompt_parts = [
+            "These sensations passed through during sleep:",
+            "\n".join(sense_lines),
+        ]
+        if body_line:
+            prompt_parts.append(body_line)
+        if smell_line:
+            prompt_parts.append(smell_line)
+        prompt_parts.append(
+            "\nDescribe what you saw. A vivid scene. Two sentences. "
+            "No abstractions, no metaphors about networks or graphs. "
+            "Just the image."
         )
 
+        system = "\n".join(prompt_parts)
+
+        # ── Generate dream text via LLM ──
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 "https://api.anthropic.com/v1/messages",
@@ -258,36 +292,91 @@ async def _dream_reflection(
         dream_text = data["content"][0]["text"]
         callback(f"\n  [{name} dreaming] {dream_text}\n")
 
-        # ── Record dream to journal file ──
+        # ── Generate dream image via Gemini (if key available) ──
+        dream_image_path = None
+        gemini_key = os.environ.get("GOOGLE_API_KEY", "")
+        if gemini_key and random.random() < 0.7:
+            try:
+                image_prompt = (
+                    f"Dreamlike surreal painting: {dream_text} "
+                    "Ethereal, vivid colors, no text, no UI, no diagrams."
+                )
+                async with httpx.AsyncClient() as client:
+                    resp = await client.post(
+                        f"https://generativelanguage.googleapis.com/v1beta/models/"
+                        f"gemini-2.0-flash-exp:generateContent?key={gemini_key}",
+                        json={
+                            "contents": [{"parts": [{"text": image_prompt}]}],
+                            "generationConfig": {
+                                "responseModalities": ["image", "text"],
+                                "imageSizes": ["512x512"],
+                            },
+                        },
+                        timeout=60,
+                    )
+                    resp.raise_for_status()
+                    img_data = resp.json()
+
+                # Extract base64 image if present
+                for candidate in img_data.get("candidates", []):
+                    for part in candidate.get("content", {}).get("parts", []):
+                        if "inlineData" in part:
+                            import base64
+                            img_bytes = base64.b64decode(
+                                part["inlineData"]["data"]
+                            )
+                            ts = time.strftime("%Y%m%d_%H%M%S", time.gmtime())
+                            dream_dir = Path(
+                                os.environ.get("DREAM_DIR", "dreams")
+                            )
+                            dream_dir.mkdir(parents=True, exist_ok=True)
+                            dream_image_path = dream_dir / f"dream_{ts}.png"
+                            dream_image_path.write_bytes(img_bytes)
+                            callback(
+                                f"  [dream image saved: {dream_image_path}]\n"
+                            )
+                            break
+            except Exception:
+                pass  # image generation is best-effort
+
+        # ── Record dream to journal ──
         dream_log = Path(os.environ.get("DREAM_LOG", "dreams.jsonl"))
         entry = {
             "agent": name,
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "type": "dream",
             "description": dream_text,
-            "source_memories": memory_texts[:8],
-            "skg_emerging": report.skg_emerging[:3],
+            "image": str(dream_image_path) if dream_image_path else None,
+            "senses": {
+                "fragments": [t for _, t in memory_fragments[:6]],
+                "body": body_line,
+                "smell": smell_line,
+                "emerging": report.skg_emerging[:3],
+            },
             "decayed": report.decayed,
             "consolidated": report.consolidated,
         }
         with open(dream_log, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
-        # ── Remember the dream as a dream-sourced memory ──
-        if chonk and random.random() < 0.7:
+        # ── Remember the dream as a seeing-channel memory ──
+        if shivvr and random.random() < 0.7:
             try:
-                vec = await chonk.embed(f"dream: {dream_text[:200]}")
+                dream_mem = f"[dream] {dream_text[:180]}"
+                if dream_image_path:
+                    dream_mem += f" [image:{dream_image_path.name}]"
+                vec = await shivvr.embed(dream_mem[:200])
                 dream_mid = int(time.time() * 1000) % (2**31)
                 row = {
                     "id": dream_mid,
                     "tags": {
-                        "channel": "thinking",
+                        "channel": "seeing",
                         "type": "dream",
-                        "text": f"[dream] {dream_text[:200]}",
+                        "text": dream_mem[:200],
                     },
                     "vector": [float(v) for v in vec],
-                    "decay_alpha": 0.018,
-                    "importance": 0.2,
+                    "decay_alpha": 0.015,
+                    "importance": 0.3,
                 }
                 await ferricula._post("remember", json.dumps(row))
             except Exception:
@@ -298,7 +387,7 @@ async def _dream_reflection(
 
 
 async def _curiosity_search(
-    ferricula, chonk, name, api_key, model, identity, callback,
+    ferricula, shivvr, name, api_key, model, identity, callback,
 ):
     """The agent decides to look something up on its own."""
     try:
@@ -362,7 +451,7 @@ async def _curiosity_search(
         # Remember what was searched
         try:
             search_mem = f"searched for: {query} | found: {snippets}"
-            vec = await chonk.embed(search_mem[:200])
+            vec = await shivvr.embed(search_mem[:200])
             await ferricula.remember(
                 search_mem[:200], vec,
                 channel="thinking", decay_alpha=0.015,
@@ -370,5 +459,60 @@ async def _curiosity_search(
         except Exception:
             pass
 
+    except Exception:
+        pass
+
+
+async def _body_sense(ferricula, shivvr):
+    """Interoception — the agent samples its own vital signs after a dream."""
+    try:
+        status = await ferricula.status()
+        report = await ferricula.dream_latest()
+
+        total = status.active + status.forgiven + status.archived
+        ks_pct = (status.keystones / max(status.active, 1)) * 100
+        edge_density = status.graph_edges / max(status.graph_nodes, 1)
+
+        body_text = (
+            f"body: active={status.active} forgiven={status.forgiven} "
+            f"archived={status.archived} keystones={status.keystones} "
+            f"ks_pct={ks_pct:.0f}% edges={status.graph_edges} "
+            f"density={edge_density:.1f} heat={getattr(status, 'heat', 0)}"
+        )
+
+        if shivvr:
+            vec = await shivvr.embed(body_text[:200])
+            await ferricula.remember(
+                body_text[:200], vec,
+                channel="body", decay_alpha=0.020,
+            )
+    except Exception:
+        pass
+
+
+async def _smell_sense(ferricula, shivvr):
+    """Ambient detection — emerging patterns from the SKG, sensed before seen."""
+    try:
+        report = await ferricula.dream_latest()
+
+        if not report.skg_emerging and not report.skg_decaying:
+            return
+
+        parts = []
+        if report.skg_emerging:
+            pairs = ", ".join(report.skg_emerging[:5])
+            parts.append(f"emerging: {pairs}")
+        if report.skg_decaying:
+            pairs = ", ".join(report.skg_decaying[:5])
+            parts.append(f"fading: {pairs}")
+
+        smell_text = "ambient: " + " | ".join(parts)
+
+        if shivvr:
+            vec = await shivvr.embed(smell_text[:200])
+            await ferricula.remember(
+                smell_text[:200], vec,
+                channel="smell", decay_alpha=0.020,
+            )
     except Exception:
         pass
